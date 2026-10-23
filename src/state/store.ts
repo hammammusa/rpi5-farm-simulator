@@ -47,6 +47,7 @@ interface AppState {
   nextionPage: number;
   nextionSel: string | null;
   speed: number;
+  ff: number | null;
   toast: string | null;
 
   setDoc(doc: ProjectDoc, opts?: { history?: boolean; markDirty?: boolean }): void;
@@ -132,6 +133,7 @@ export const useApp = create<AppState>((set, get) => ({
   nextionPage: 0,
   nextionSel: null,
   speed: 1,
+  ff: null,
   toast: null,
 
   setDoc(doc, opts = {}) {

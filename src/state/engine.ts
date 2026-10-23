@@ -109,6 +109,24 @@ export function resetSimulation() {
   sim.resetSimulation();
 }
 
+let ffTimer: any = null;
+/** Run the clock at 600x until `toMs`; events keep their order because Python runs at the same accelerated rate. */
+export function fastForward(toMs: number) {
+  clearInterval(ffTimer);
+  sim.clock.setSpeed(600);
+  useApp.setState({ ff: toMs });
+  ffTimer = setInterval(() => {
+    if (sim.clock.nowMs() >= toMs) cancelFastForward();
+  }, 15);
+}
+
+export function cancelFastForward() {
+  clearInterval(ffTimer);
+  ffTimer = null;
+  sim.clock.setSpeed(useApp.getState().speed);
+  useApp.setState({ ff: null });
+}
+
 export function setSpeed(s: number) {
   sim.clock.setSpeed(s);
   useApp.getState().setSpeed(s);
@@ -123,7 +141,8 @@ const subs = new Set<() => void>();
 sim.subscribe(() => {
   if (scheduled) return;
   scheduled = true;
-  requestAnimationFrame(() => {
+  const raf = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (f: () => void) => setTimeout(f, 16);
+  raf(() => {
     scheduled = false;
     ver = sim.version;
     for (const s of subs) s();

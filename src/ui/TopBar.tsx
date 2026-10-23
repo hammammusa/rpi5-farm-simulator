@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { runProgram, saveNow, setSpeed, sim, stopProgram, resetSimulation } from '../state/engine';
+import { cancelFastForward, fastForward, runProgram, saveNow, setSpeed, sim, stopProgram, resetSimulation } from '../state/engine';
 import { useApp, type Tab } from '../state/store';
 import { useT } from '../i18n';
 
@@ -40,25 +40,7 @@ export function TopBar() {
   const now = useSimClock();
   const st = useApp.getState();
   const running = rs === 'running' || rs === 'stopping';
-  const [ff, setFf] = useState<number | null>(null);
-
-  // fast-forward: run the clock at 600× until the target time, then restore the previous speed
-  useEffect(() => {
-    if (ff === null) return;
-    const prev = speed;
-    sim.clock.setSpeed(600);
-    const id = setInterval(() => {
-      if (sim.clock.nowMs() >= ff) {
-        sim.clock.setSpeed(prev);
-        setFf(null);
-      }
-    }, 20);
-    return () => {
-      clearInterval(id);
-      sim.clock.setSpeed(prev);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ff]);
+  const ff = useApp((s) => s.ff);
 
   const d = new Date(now);
   return (
@@ -104,7 +86,7 @@ export function TopBar() {
           {ff !== null && <option value="ff">600× ⏩</option>}
         </select>
         <button
-          onClick={() => (ff ? setFf(null) : setFf(sim.clock.nowMs() + 3600_000))}
+          onClick={() => (ff ? cancelFastForward() : fastForward(sim.clock.nowMs() + 3600_000))}
           title={ff ? t('Stop fast-forward') : t('Fast-forward 1 hour (600×, events stay in order)')}
           className={ff ? 'on' : ''}
           data-testid="ff"
