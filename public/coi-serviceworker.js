@@ -31,29 +31,28 @@ if (typeof window === 'undefined') {
   });
 } else {
   (() => {
-    if (window.crossOriginIsolated) return;
+    // Reload once the worker is active, so the next navigation is served with
+    // the isolation headers. Waiting for `ready` (instead of reloading on
+    // `updatefound`) avoids a race where the reloaded page is not yet
+    // controlled and stays non-isolated. The counter stops reload loops.
+    const KEY = 'coiReloads';
+    if (window.crossOriginIsolated) {
+      sessionStorage.removeItem(KEY);
+      return;
+    }
     if (!window.isSecureContext || !navigator.serviceWorker) {
       console.warn('[coi] cannot enable cross-origin isolation (needs HTTPS and service workers)');
       return;
     }
-    const reloaded = sessionStorage.getItem('coiReloaded');
-    navigator.serviceWorker.register(document.currentScript.src).then((reg) => {
-      reg.addEventListener('updatefound', () => {
-        if (!reloaded) {
-          sessionStorage.setItem('coiReloaded', '1');
-          window.location.reload();
-        }
-      });
-      if (reg.active && !navigator.serviceWorker.controller && !reloaded) {
-        sessionStorage.setItem('coiReloaded', '1');
+    const reloads = Number(sessionStorage.getItem(KEY) || 0);
+    navigator.serviceWorker
+      .register(document.currentScript.src)
+      .then(() => navigator.serviceWorker.ready)
+      .then(() => {
+        if (window.crossOriginIsolated || reloads >= 2) return;
+        sessionStorage.setItem(KEY, String(reloads + 1));
         window.location.reload();
-      }
-    });
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!window.crossOriginIsolated && !sessionStorage.getItem('coiReloaded2')) {
-        sessionStorage.setItem('coiReloaded2', '1');
-        window.location.reload();
-      }
-    });
+      })
+      .catch((e) => console.warn('[coi] service worker registration failed', e));
   })();
 }
