@@ -48,7 +48,7 @@ E2E_BASE_URL=https://<deployment>/ npx playwright test   # same suite against pr
 
 ## Deploy
 
-`.github/workflows/deploy.yml` tests, builds (with `BASE_PATH=/<repo>/`) and publishes to GitHub Pages on every push to `main`.
+`.github/workflows/deploy.yml` tests, builds (with `BASE_PATH=/<repo>/`) and publishes to GitHub Pages on every push to `main`, then runs the Playwright suite (including acceptance test T15) against the live HTTPS site.
 
 ## Architecture
 
