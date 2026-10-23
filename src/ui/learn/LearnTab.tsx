@@ -5,6 +5,7 @@ import { useApp } from '../../state/store';
 import { saveNow } from '../../state/engine';
 import { runScenario, type ScenarioReport } from '../../tests/host';
 import { useT } from '../../i18n';
+import { Docs } from './Docs';
 
 const LEVELS: Example['level'][] = ['beginner', 'intermediate', 'advanced', 'competition'];
 
@@ -26,7 +27,7 @@ export default function LearnTab() {
   const [sel, setSel] = useState<string>(current ?? EXAMPLES[0].id);
   const [result, setResult] = useState<Record<string, ScenarioReport[]>>({});
   const [busy, setBusy] = useState(false);
-  const ex = EXAMPLES.find((e) => e.id === sel)!;
+  const ex = EXAMPLES.find((e) => e.id === sel) ?? EXAMPLES[0];
   const L = (b: { en: string; ar: string }) => (lang === 'ar' ? b.ar : b.en);
 
   const check = async () => {
@@ -43,6 +44,9 @@ export default function LearnTab() {
   return (
     <div className="learn-tab">
       <aside className="learn-list">
+        <button className={`learn-item ${sel === '__docs' ? 'on' : ''}`} onClick={() => setSel('__docs')} data-testid="docs-link" style={{ marginTop: 8 }}>
+          📖 {t('Python & hardware reference')}
+        </button>
         {LEVELS.map((lv) => (
           <div key={lv}>
             <div className="panel-title sub">{t(lv)}</div>
@@ -55,6 +59,9 @@ export default function LearnTab() {
           </div>
         ))}
       </aside>
+      {sel === '__docs' ? (
+        <Docs />
+      ) : (
       <article className="page learn-detail">
         <h1>
           {ex.n}. {L(ex.title)}
@@ -108,6 +115,7 @@ export default function LearnTab() {
           </details>
         ))}
       </article>
+      )}
     </div>
   );
 }

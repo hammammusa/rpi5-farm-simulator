@@ -370,6 +370,7 @@ export const AR: Record<string, string> = {
   advanced: 'متقدم',
   competition: 'مسابقة',
   'Learning objective': 'هدف التعلم',
+  'Python & hardware reference': 'مرجع بايثون والعتاد',
   'Open this example': 'فتح هذا المثال',
   'Checking…': 'جارٍ الفحص…',
   'Check my project': 'افحص مشروعي',

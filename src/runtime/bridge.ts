@@ -78,8 +78,9 @@ export class PythonRuntime {
     this.cb.state(s, detail);
   }
 
+  /** resolves once the Python runtime is loaded (it may be idle or running a program) */
   whenReady(): Promise<void> {
-    if (this.state === 'ready') return Promise.resolve();
+    if (this.state === 'ready' || this.state === 'running' || this.state === 'stopping') return Promise.resolve();
     return new Promise((r) => this.readyWaiters.push(r));
   }
 

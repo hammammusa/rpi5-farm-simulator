@@ -94,6 +94,8 @@ export async function runProgram() {
   const st = useApp.getState();
   const rt = startRuntime();
   if (!rt) return;
+  // finish the previous run first so its "stopped" message lands before the new prompt
+  if (rt.state === 'running' || rt.state === 'stopping') await rt.stop();
   st.setPyError(null);
   st.termClear();
   st.termWrite('sys', `$ python3 ${st.doc.mainFile}\n`);
