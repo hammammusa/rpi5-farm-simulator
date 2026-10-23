@@ -921,6 +921,12 @@ export class Simulator {
     return out;
   }
 
+  /** simulation time when the next not-yet-arrived byte becomes readable, or null */
+  uartNext(port: string): number | null {
+    const q = this.rxq.get(this.canon(port));
+    return q && q.length ? q[0].t : null;
+  }
+
   uartFlushInput(port: string) {
     const q = this.rxq.get(this.canon(port));
     if (q) q.length = 0;

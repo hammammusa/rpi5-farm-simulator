@@ -42,7 +42,7 @@ export const pi5: PartManifest = {
   pins,
   internal: () => [group('ground'), group('power3v3'), group('power5v')],
   props: [
-    { key: 'onewire', label: '1-Wire (dtoverlay=w1-gpio)', type: 'boolean', default: true, group: 'config', help: 'Enables the 1-Wire bus on GPIO4 like dtoverlay=w1-gpio in /boot/firmware/config.txt' },
+    { key: 'onewire', label: '1-Wire (dtoverlay=w1-gpio)', type: 'boolean', default: false, group: 'config', help: 'Enables the 1-Wire bus on GPIO4 like dtoverlay=w1-gpio in /boot/firmware/config.txt' },
     { key: 'uart0', label: 'UART0 enabled (dtparam=uart0=on)', type: 'boolean', default: true, group: 'config' },
   ],
   faults: [FAULT.none, FAULT.powerFail],
