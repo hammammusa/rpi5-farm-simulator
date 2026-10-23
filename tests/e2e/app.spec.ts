@@ -95,6 +95,11 @@ test('project persists across a page reload', async ({ page }) => {
   await page.getByTestId('tab-learn').click();
   await page.getByTestId('example-5').click();
   await page.getByTestId('open-example').click();
+  // openExample() saves, loads and saves again before switching to the circuit tab
+  await page.waitForFunction(() => {
+    const st = (window as any).__rpi5sim.useApp.getState();
+    return st.tab === 'circuit' && st.doc.name === 'Ex 5 · Automatic fan' && !st.dirty;
+  });
   await page.evaluate(() => {
     const st = (window as any).__rpi5sim.useApp.getState();
     st.setProp('dht', 'temperature', 31.25);
