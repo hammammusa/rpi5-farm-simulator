@@ -170,10 +170,10 @@ function linearSolve(c: Circuit): Float64Array {
       inject(e.a, i);
       inject(e.b, -i);
     } else if (e.k === 'D' && e.on) {
-      // Diode on: Vf in series with rd -> Norton: current source vf/rd from cathode to anode side
+      // Diode on: i = (va - vb - vf)/rd  →  G·(va - vb) = i + vf/rd, i.e. inject vf/rd into the anode
       const i = e.vf / e.rd;
-      inject(e.a, -i);
-      inject(e.b, i);
+      inject(e.a, i);
+      inject(e.b, -i);
     } else if (e.k === 'I') {
       inject(e.a, e.i);
       inject(e.b, -e.i);

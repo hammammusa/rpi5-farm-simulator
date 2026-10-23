@@ -5,7 +5,7 @@ import { BCM_TO_PHYS, defaultPull, I2C1, ONEWIRE_DEFAULT_PIN, SPI0, UART_PORTS, 
 import { getPart, hasPart, pinsOf, withDefaults, type PartManifest, type PostCtx, type SimView, type StampCtx } from './parts';
 import { Circuit, GND, solve, type Solution } from './solver';
 import type { ComponentInstance, GpioRuntime, Issue, PinPattern, ProjectDoc, Severity } from './types';
-import { validateStatic } from './validate';
+import { hasPullupResistor, validateStatic } from './validate';
 import type { DeviceHost, DeviceModel } from './devices/device';
 import { Bme280 } from './devices/bme280';
 import { Mcp3008 } from './devices/mcp3008';
@@ -1003,17 +1003,7 @@ export class Simulator {
 
   // ------------------------------------------------------------ DHT / 1-Wire
   private pulledUp(netId: number, maxOhms: number): boolean {
-    const r = this.mainResult();
-    const node = this.nodeOfNet(netId, r);
-    if (node === null || node < 0) return false;
-    for (const e of r.c.elems) {
-      if (e.k !== 'R' || e.r > maxOhms) continue;
-      const other = e.a === node ? e.b : e.b === node ? e.a : null;
-      if (other === null) continue;
-      if (r.sol.volt(other) >= 2.8) return true;
-    }
-    for (const e of r.c.elems) if (e.k === 'V' && e.a === node && e.rint <= maxOhms && e.v >= 2.8 && e.owner !== this.net.piId) return true;
-    return false;
+    return hasPullupResistor(this, netId, maxOhms);
   }
 
   dhtRead(b: number): { temperature: number; humidity: number } | { error: 'not_found' | 'timeout' } {
