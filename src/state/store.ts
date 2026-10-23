@@ -48,6 +48,8 @@ interface AppState {
   nextionSel: string | null;
   speed: number;
   ff: number | null;
+  /** automated tests are driving the app: no autosave */
+  testing: boolean;
   toast: string | null;
 
   setDoc(doc: ProjectDoc, opts?: { history?: boolean; markDirty?: boolean }): void;
@@ -134,6 +136,7 @@ export const useApp = create<AppState>((set, get) => ({
   nextionSel: null,
   speed: 1,
   ff: null,
+  testing: false,
   toast: null,
 
   setDoc(doc, opts = {}) {

@@ -177,7 +177,8 @@ pre {
   font-size: 20px;
 }
 .project-name {
-  width: 190px;
+  width: 150px;
+  text-overflow: ellipsis;
   font-weight: 600;
   background: transparent;
   border-color: transparent;
@@ -1084,5 +1085,346 @@ tr.used td:first-child {
   }
   .python-tab .center {
     height: calc(100vh - 110px);
+  }
+}
+
+/* ------------------------------------------------ segmented buttons */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.seg button {
+  border: none;
+  border-radius: 0;
+}
+.mini {
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: var(--muted);
+}
+.mini input {
+  width: 62px;
+}
+textarea {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------ nextion tab */
+.nextion-tab {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.nx-side {
+  width: 230px;
+  background: var(--panel);
+  border-inline-end: 1px solid var(--line);
+  padding: 0 10px 12px;
+  overflow-y: auto;
+}
+.nx-palette {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+}
+.nx-palette button {
+  text-align: start;
+  font-size: 12px;
+}
+.nx-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  gap: 8px;
+  overflow: auto;
+}
+.nx-stage {
+  display: flex;
+  justify-content: center;
+}
+.nx-bezel {
+  background: #111;
+  padding: 18px;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.nx-edit {
+  outline: 1px dashed transparent;
+  cursor: move;
+}
+.nx-edit:hover {
+  outline-color: #7aa7ff;
+}
+.nx-edit.sel {
+  outline: 2px solid #2f8cff;
+}
+.nx-tag {
+  position: absolute;
+  top: -14px;
+  left: 0;
+  font: 10px var(--mono);
+  color: #9cf;
+  background: #000a;
+  padding: 0 3px;
+  pointer-events: none;
+}
+.nx-resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: #2f8cff;
+  cursor: nwse-resize;
+}
+.nx-invisible {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed #aaa;
+  color: #aaa;
+  font: 10px var(--mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nx-console .uart-log {
+  max-height: 180px;
+}
+.nx-ref {
+  font-size: 11px;
+  white-space: pre;
+  overflow-x: auto;
+  background: var(--bg2);
+  padding: 8px;
+  border-radius: 6px;
+}
+.nx-props textarea {
+  margin-bottom: 4px;
+}
+
+/* ------------------------------------------------ farm */
+.farm-tab {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.farm-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 0;
+  gap: 6px;
+}
+.farm-svg {
+  width: 100%;
+  flex: 1;
+  min-height: 220px;
+  background: var(--ws-bg);
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+.farm-dock {
+  height: 210px;
+  display: flex;
+  margin: 0 -10px;
+}
+.farm-dock .dock {
+  flex: 1;
+  height: auto !important;
+}
+.farm-side {
+  width: 330px;
+}
+.farm-room {
+  fill: color-mix(in srgb, var(--accent) 6%, transparent);
+  stroke: var(--line);
+}
+.farm-label {
+  font: 11px var(--sans);
+  fill: var(--text);
+}
+.farm-big {
+  font: 700 26px var(--sans);
+  fill: #fff;
+}
+.tank {
+  fill: color-mix(in srgb, var(--panel2) 70%, transparent);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+.pipe {
+  fill: none;
+  stroke: #8a96a3;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pipe.thin {
+  stroke-width: 3;
+}
+.pipe-flow {
+  stroke: #4aa3ff;
+  stroke-dasharray: 10 8;
+  animation: flow 0.6s linear infinite;
+}
+.pipe-flow.slow {
+  animation-duration: 1.4s;
+}
+.flow-anim {
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+@keyframes flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  display: inline-block;
+}
+.dot.on {
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok);
+}
+details {
+  margin: 8px 0;
+}
+details summary {
+  cursor: pointer;
+  color: var(--accent2);
+}
+
+/* ------------------------------------------------ web */
+.web-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.browser-bar {
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  margin: 0;
+}
+.addr {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 2px 12px;
+  min-width: 200px;
+}
+.addr input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 3px 0;
+}
+.browser-stage {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  background: var(--bg2);
+  padding: 10px;
+  min-height: 0;
+}
+.browser-stage iframe {
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  max-width: 100%;
+}
+
+/* ------------------------------------------------ learn & competition */
+.learn-tab {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.learn-list {
+  width: 280px;
+  background: var(--panel);
+  border-inline-end: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 0 8px 12px;
+}
+.learn-item {
+  display: flex;
+  width: 100%;
+  text-align: start;
+  gap: 6px;
+  align-items: center;
+  border: none;
+  background: transparent;
+  padding: 6px;
+}
+.learn-item.on {
+  background: var(--panel2);
+}
+.learn-item .num {
+  background: var(--chip);
+  border-radius: 99px;
+  min-width: 22px;
+  text-align: center;
+  font-size: 11px;
+  padding: 1px 4px;
+}
+.learn-detail {
+  flex: 1;
+}
+.code-view {
+  background: var(--bg2);
+  padding: 10px;
+  border-radius: 8px;
+  overflow: auto;
+  font-size: 12px;
+  max-height: 420px;
+}
+.timer {
+  font: 700 26px var(--mono);
+  padding: 2px 12px;
+  border-radius: 8px;
+  background: var(--bg2);
+}
+.timer.urgent {
+  color: var(--danger);
+}
+.report td {
+  vertical-align: top;
+}
+@media (max-width: 760px) {
+  .nextion-tab,
+  .farm-tab,
+  .learn-tab {
+    flex-direction: column;
+    height: auto;
+  }
+  .nx-side,
+  .learn-list,
+  .farm-side {
+    width: 100%;
+    max-height: 300px;
+  }
+  .nx-bezel {
+    transform: scale(0.5);
+    transform-origin: top center;
+  }
+  .farm-svg {
+    min-height: 260px;
   }
 }

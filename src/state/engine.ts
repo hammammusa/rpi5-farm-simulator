@@ -169,7 +169,7 @@ export function startLoop() {
 
 let saveTimer: any = null;
 useApp.subscribe((s, prev) => {
-  if (s.doc !== prev.doc && s.dirty) {
+  if (s.doc !== prev.doc && s.dirty && !s.testing) {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => void saveNow(), 1200);
   }

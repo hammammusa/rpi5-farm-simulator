@@ -1,7 +1,7 @@
 // Ready-made Nextion layouts used by the examples and the Nextion tab.
 import { NX_COLORS, NX_DEFAULTS, emptyNextionProject, type NextionProject, type NxComponent, type NxPage, type NxType } from '../engine/devices/nextion';
 
-const C = { ...NX_COLORS, DARK: 8484, PANEL: 12678, TEAL: 1300, ORANGE: 64512, LIGHTGRAY: 50712 };
+const C = { RED: NX_COLORS.RED, BLUE: NX_COLORS.BLUE, GREEN: NX_COLORS.GREEN, YELLOW: NX_COLORS.YELLOW, WHITE: NX_COLORS.WHITE, BLACK: NX_COLORS.BLACK, DARK: 8484, PANEL: 12678, TEAL: 1300, ORANGE: 64512, LIGHTGRAY: 50712 };
 
 function comp(page: NxPage, type: NxType, name: string, x: number, y: number, w: number, h: number, attrs: Record<string, any> = {}, ev: Partial<Pick<NxComponent, 'press' | 'release' | 'timer'>> = {}): NxComponent {
   const id = page.components.length + 1;

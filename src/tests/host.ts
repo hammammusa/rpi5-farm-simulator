@@ -14,6 +14,8 @@ export interface TestResult {
 
 export class TestHost {
   steps: string[] = [];
+  /** check the user's current project instead of loading the reference circuit */
+  keepCurrent = false;
   constructor(public speed = 1) {}
 
   note(s: string) {
@@ -21,6 +23,13 @@ export class TestHost {
   }
 
   async load(doc: ProjectDoc) {
+    if (this.keepCurrent) {
+      sim.resetSimulation();
+      sim.clock.setSpeed(this.speed);
+      useApp.getState().setSpeed(this.speed);
+      await this.realWait(30);
+      return;
+    }
     const d = structuredClone(doc);
     d.sim = { ...d.sim, speed: this.speed };
     useApp.getState().loadProject(d);
@@ -152,15 +161,21 @@ export interface ScenarioReport {
   screenshot?: string;
 }
 
-export async function runScenario(s: Scenario, speed = 1): Promise<ScenarioReport> {
+export async function runScenario(s: Scenario, speed = 1, keepCurrent = false): Promise<ScenarioReport> {
   const h = new TestHost(speed);
+  h.keepCurrent = keepCurrent;
   const t0 = performance.now();
+  useApp.setState({ testing: true });
   try {
     const r = await s.run(h);
     await h.stop();
+    useApp.setState({ testing: false });
     return { id: s.id, name: s.name, status: r.pass ? 'PASS' : 'FAIL', expected: s.expected, actual: r.actual, steps: [...h.steps, ...(r.details ?? [])], durationMs: performance.now() - t0 };
   } catch (e: any) {
     await h.stop().catch(() => {});
+    useApp.setState({ testing: false });
     return { id: s.id, name: s.name, status: 'ERROR', expected: s.expected, actual: '', error: String(e?.message ?? e), steps: h.steps, durationMs: performance.now() - t0 };
   }
 }
+
+(globalThis as any).__rpi5runScenario = runScenario;
