@@ -71,6 +71,9 @@ function onDone(r: RunResult, files: { name: string; content: string }[]) {
   st.setStdinPending(false);
   stdinResolve = null;
   const T = (s: string, p?: any) => translate(st.lang, s, p);
+  if (r.status === 'ok') sim.pyEvent('end', 'program finished');
+  else if (r.status === 'stopped') sim.pyEvent('end', 'program stopped by the user');
+  else if (r.error) sim.pyEvent('error', `${r.error.type}${r.error.line ? ` at ${r.error.file}:${r.error.line}` : ''}: ${r.error.message.split('\n').pop()}`);
   if (r.status === 'ok') st.termWrite('sys', `\n${T('Program finished.')}\n`);
   else if (r.status === 'stopped') st.termWrite('sys', `\n${T('Program stopped.')}\n`);
   else if (r.error) {
@@ -102,6 +105,7 @@ export async function runProgram() {
   st.setPyError(null);
   st.termClear();
   st.termWrite('sys', `$ python3 ${st.doc.mainFile}\n`);
+  sim.pyEvent('run', `python3 ${st.doc.mainFile}`);
   if (rt.state === 'loading') st.termWrite('sys', translate(st.lang, 'Python is still loading — the program will start in a moment…') + '\n');
   await rt.run(st.doc.files, st.doc.mainFile);
 }
@@ -185,12 +189,63 @@ export async function saveNow() {
   try {
     await saveProject(st.doc);
     useApp.setState({ dirty: false, savedAt: Date.now() });
+    if (useApp.getState().doc === st.doc) clearRecovery();
   } catch (e) {
     console.warn('save failed', e);
   }
 }
 
+// ------------------------------------------------------------ crash / refresh recovery
+// IndexedDB writes are asynchronous and may not finish while the page unloads, so
+// unsaved changes are also written synchronously to localStorage on the way out.
+const RECOVERY_KEY = 'rpi5sim.recovery';
+
+export function writeRecovery() {
+  const st = useApp.getState();
+  if (!st.dirty || st.testing) return;
+  try {
+    localStorage.setItem(RECOVERY_KEY, JSON.stringify({ at: Date.now(), doc: st.doc }));
+  } catch {
+    // storage full or unavailable: the regular autosave still runs
+  }
+}
+
+function clearRecovery() {
+  try {
+    localStorage.removeItem(RECOVERY_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function readRecovery(): { at: number; doc: any } | null {
+  try {
+    const raw = localStorage.getItem(RECOVERY_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', writeRecovery);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && writeRecovery());
+}
+
 export async function restoreLast(): Promise<boolean> {
+  const rec = readRecovery();
+  if (rec?.doc && Array.isArray(rec.doc.components)) {
+    const saved = await idbLoad(rec.doc.id).catch(() => null);
+    // only when the snapshot is newer than what autosave stored
+    if (!saved || (saved.updatedAt ?? 0) < rec.at) {
+      useApp.getState().loadProject(migrate(rec.doc));
+      useApp.setState({ dirty: true });
+      await saveNow();
+      useApp.getState().showToast(translate(useApp.getState().lang, 'Recovered unsaved changes from the last session.'));
+      return true;
+    }
+    clearRecovery();
+  }
   const id = await lastProjectId();
   if (!id) return false;
   const d = await idbLoad(id);

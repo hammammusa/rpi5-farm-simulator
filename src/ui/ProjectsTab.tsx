@@ -5,11 +5,16 @@ import { saveNow } from '../state/engine';
 import { deleteProject, download, exportJson, exportZip, importFile, listProjects, loadProject, saveProject, type ProjectMeta } from '../state/persist';
 import { wiringTable } from '../state/wiring';
 import { useT } from '../i18n';
+import { EXAMPLES } from '../examples';
+import { openExample } from './learn/LearnTab';
 
 export default function ProjectsTab() {
   const t = useT();
   const doc = useApp((s) => s.doc);
+  const lang = useApp((s) => s.lang);
   const [list, setList] = useState<ProjectMeta[]>([]);
+  const [q, setQ] = useState('');
+  const [tpl, setTpl] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const refresh = async () => setList(await listProjects());
   useEffect(() => {
@@ -40,6 +45,22 @@ export default function ProjectsTab() {
     await saveProject(c);
     await refresh();
   };
+  const saveAs = async () => {
+    const n = prompt(t('Save a copy as'), `${doc.name} (copy)`);
+    if (!n) return;
+    await saveNow();
+    const c = { ...structuredClone(useApp.getState().doc), id: uid('p'), name: n, createdAt: Date.now() };
+    useApp.getState().loadProject(c);
+    useApp.setState({ dirty: true });
+    await saveNow();
+    await refresh();
+    useApp.getState().showToast(t('Saved as "{n}" — you are now editing the copy.', { n }));
+  };
+  const fromTemplate = async () => {
+    const ex = EXAMPLES.find((e) => e.id === tpl);
+    if (ex) await openExample(ex);
+    else await create();
+  };
   const rename = async (m: ProjectMeta) => {
     const n = prompt(t('New name'), m.name);
     if (!n) return;
@@ -69,6 +90,9 @@ export default function ProjectsTab() {
         </button>
         <button onClick={() => void saveNow().then(refresh)} data-testid="save-project">
           💾 {t('Save current')}
+        </button>
+        <button onClick={() => void saveAs()} data-testid="save-as">
+          {t('Save as…')}
         </button>
         <button className="primary" onClick={() => useApp.getState().setExportOpen(true)} data-testid="export-open">
           ⬇ {t('Export project…')}
@@ -107,7 +131,37 @@ export default function ProjectsTab() {
           }}
         />
       </div>
-      <table className="data-table">
+      <div className="row wrap">
+        <label>
+          {t('Start from a template')}{' '}
+          <select value={tpl} onChange={(e) => setTpl(e.target.value)} data-testid="template-select">
+            <option value="">{t('Blank project')}</option>
+            {EXAMPLES.map((e) => (
+              <option key={e.id} value={e.id}>
+                {lang === 'ar' ? e.title.ar : e.title.en}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={() => void fromTemplate()} data-testid="new-from-template">
+          ＋ {t('Create')}
+        </button>
+      </div>
+      {list.length > 1 && (
+        <div className="row wrap recent" data-testid="recent-projects">
+          <span className="muted small">{t('Recent')}:</span>
+          {list
+            .filter((m) => m.id !== doc.id)
+            .slice(0, 5)
+            .map((m) => (
+              <button key={m.id} className="chip" onClick={() => void open(m.id)}>
+                {m.name}
+              </button>
+            ))}
+        </div>
+      )}
+      <input className="search" placeholder={t('Search projects…')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('Search projects')} data-testid="project-search" />
+      <table className="data-table" data-testid="project-list">
         <thead>
           <tr>
             <th>{t('Name')}</th>
@@ -117,7 +171,7 @@ export default function ProjectsTab() {
           </tr>
         </thead>
         <tbody>
-          {list.map((m) => (
+          {list.filter((m) => !q.trim() || m.name.toLowerCase().includes(q.trim().toLowerCase())).map((m) => (
             <tr key={m.id} className={m.id === doc.id ? 'used' : ''}>
               <td>
                 {m.name} {m.id === doc.id && <span className="badge">{t('open')}</span>}

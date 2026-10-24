@@ -28,6 +28,7 @@ export function useSimClock() {
 
 export function TopBar() {
   const t = useT();
+  const mode = useApp((s) => s.mode);
   const tab = useApp((s) => s.tab);
   const name = useApp((s) => s.doc.name);
   const rs = useApp((s) => s.runtimeState);
@@ -101,6 +102,15 @@ export function TopBar() {
         </span>
       </div>
       <div className="prefs">
+        <button
+          className="mode-toggle"
+          onClick={() => st.setMode(mode === 'beginner' ? 'advanced' : 'beginner')}
+          title={mode === 'beginner' ? t('Beginner mode: pin explanations, wiring hints and plain-language errors. Click for Advanced mode (protocol monitors, logs, technical detail).') : t('Advanced mode: protocol inspection, simulation log and technical detail. Click for Beginner mode.')}
+          data-testid="mode-toggle"
+          data-mode={mode}
+        >
+          {mode === 'beginner' ? `🎓 ${t('Beginner')}` : `🛠 ${t('Advanced')}`}
+        </button>
         <button onClick={() => st.setExportOpen(true)} title={t('Export project: image, wiring table, BOM, PDF, ZIP')} aria-label={t('Export project')} data-testid="export-btn">
           ⬇
         </button>

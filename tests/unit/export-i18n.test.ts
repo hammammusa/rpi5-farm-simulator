@@ -1,9 +1,10 @@
-// Every user-visible string of the export feature (dialog, report tables, PDF) has an Arabic translation.
+// Every user-visible string of the export feature (dialog, report tables, PDF), the monitors,
+// the problems panel and project management has an Arabic translation.
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { AR } from '../../src/i18n';
 
-const FILES = ['src/export/report.ts', 'src/export/exporter.ts', 'src/ui/ExportDialog.tsx'];
+const FILES = ['src/export/report.ts', 'src/export/exporter.ts', 'src/ui/ExportDialog.tsx', 'src/ui/Monitors.tsx', 'src/ui/Problems.tsx', 'src/ui/ProjectsTab.tsx', 'src/ui/Dock.tsx', 'src/ui/TopBar.tsx', 'src/state/engine.ts'];
 
 export function exportStrings(): string[] {
   const out = new Set<string>();
@@ -16,7 +17,7 @@ export function exportStrings(): string[] {
     for (const m of src.matchAll(/\bn\(\d+,\s*'((?:[^'\\]|\\.)+)'\)/g)) out.add(m[1]);
   }
   // sheet names and direction labels passed as variables
-  for (const s of ['Wiring', 'Nets', 'Power', 'Output', 'Input', 'PWM output', 'Bidirectional']) out.add(s);
+  for (const s of ['Wiring', 'Nets', 'Power', 'Output', 'Input', 'PWM output', 'Bidirectional', 'Recovered unsaved changes from the last session.']) out.add(s);
   return [...out].filter((s) => /[A-Za-z]/.test(s) && s !== '#');
 }
 

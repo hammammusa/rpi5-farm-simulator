@@ -61,6 +61,7 @@ export function dispatchRpc(s: Simulator, method: string, a: any, t: number, hoo
     case 'sim.read':
       return s.noteRead(String(a.comp ?? ''), String(a.what ?? ''), String(a.value ?? ''));
     case 'driver.loaded':
+      s.pyEvent('import', `import ${a.module} (${a.kind === 'simulator' ? 'simulator-only module' : 'built-in, no installation'})`);
       return s.log(`Python driver loaded: ${a.module} (${a.kind})`);
     case 'http.serve':
       hooks.serve(a.port ?? 5000);
@@ -91,6 +92,7 @@ export function dispatchPost(s: Simulator, method: string, a: any, t: number, ho
     case 'sim.log':
       return s.log(String(a.msg), a.level ?? 'info');
     case 'driver.loaded':
+      s.pyEvent('import', `import ${a.module} (${a.kind === 'simulator' ? 'simulator-only module' : 'built-in, no installation'})`);
       return s.log(`Python driver loaded: ${a.module} (${a.kind})`);
   }
 }

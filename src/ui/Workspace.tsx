@@ -749,7 +749,9 @@ export function Workspace() {
 
   const comps = doc.components.filter((c) => hasPart(c.type));
   const ordered = [...comps.filter((c) => c.type === 'breadboard'), ...comps.filter((c) => c.type !== 'breadboard')];
-  const insertedPins = new Set(sim.net.insertions.map((i) => `${i.board}:${i.hole}`));
+  // a stable Set while the insertions are unchanged keeps the memoised parts from re-rendering
+  const insertedKey = sim.net.insertions.map((i) => `${i.board}:${i.hole}`).join('|');
+  const insertedPins = useMemo(() => new Set(insertedKey ? insertedKey.split('|') : []), [insertedKey]);
   const groupBoxes = useMemo(() => {
     const sel = new Set(selection);
     const groups = new Map<string, ComponentInstance[]>();
@@ -802,9 +804,7 @@ export function Workspace() {
             <rect key={i} x={b.x0 - 12} y={b.y0 - 12} width={b.x1 - b.x0 + 24} height={b.y1 - b.y0 + 24} className="group-box" rx={8} />
           ))}
           {paths.map(({ wire: w, pts, a, b }) => {
-            const d = pathD(pts);
             const sel = selectedWire === w.id;
-            const hlNet = persistentNet?.has(`${w.from.comp}:${w.from.pin}`);
             const width = w.width ?? vs.wireWidth;
             const anchor = labelAnchor(pts);
             const netId = sim.net.netOf(w.from);
@@ -814,22 +814,23 @@ export function Workspace() {
             if (vs.showWireLabels && w.label) tags.push(w.label);
             if (vs.showNetNames && net && !/^Net \d+$/.test(net.name)) tags.push(net.name);
             if (volts !== null && volts !== undefined) tags.push(`${volts.toFixed(2)} V`);
-            const ctl = expandWire(a, w.points, b, 'manual');
             return (
-              <g key={w.id} data-wire={w.id} className={`wire ${sel ? 'sel' : ''} ${hlNet ? 'net-hl' : ''}`} data-testid={`wire-${w.id}`} data-color={w.color} data-width={width} data-route={w.route ?? 'manual'} data-bends={w.points?.length ?? 0}>
-                <path d={d} className="wire-hit" style={{ strokeWidth: Math.max(10, width + 7) }} />
-                <path d={d} className="wire-shadow" style={{ strokeWidth: width + 2 }} />
-                <path d={d} stroke={w.color} className="wire-line" style={{ strokeWidth: width }} />
-                {sel && (w.route ?? 'manual') !== 'manual' && w.points?.length ? <path d={pathD(ctl.pts)} className="wire-ctl" /> : null}
-                <circle cx={a.x} cy={a.y} r={Math.max(2, width * 0.75)} fill={w.color} className="wire-end" />
-                <circle cx={b.x} cy={b.y} r={Math.max(2, width * 0.75)} fill={w.color} className="wire-end" />
-                {sel && w.points?.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={4.5} className="wire-handle" data-handle={i} data-wire={w.id} data-testid={`bend-${w.id}-${i}`} />)}
-                {tags.length > 0 && (
-                  <text x={anchor.x} y={anchor.y - width - 2} className="wire-label" textAnchor="middle">
-                    {tags.join(' · ')}
-                  </text>
-                )}
-              </g>
+              <WireView
+                key={w.id}
+                w={w}
+                d={pathD(pts)}
+                ctlD={sel && (w.route ?? 'manual') !== 'manual' && w.points?.length ? pathD(expandWire(a, w.points, b, 'manual').pts) : ''}
+                ax={a.x}
+                ay={a.y}
+                bx={b.x}
+                by={b.y}
+                sel={sel}
+                hlNet={!!persistentNet?.has(`${w.from.comp}:${w.from.pin}`)}
+                width={width}
+                tag={tags.join(' · ')}
+                tx={anchor.x}
+                ty={anchor.y - width - 2}
+              />
             );
           })}
           {crossings.map((x, i) => (
@@ -960,6 +961,28 @@ export function Workspace() {
   );
 }
 
+// ---------------------------------------------------------------- one wire
+/** Props are primitives (plus the stored wire object), so unchanged wires skip re-rendering. */
+const WireView = memo(function WireView(p: { w: Wire; d: string; ctlD: string; ax: number; ay: number; bx: number; by: number; sel: boolean; hlNet: boolean; width: number; tag: string; tx: number; ty: number }) {
+  const { w, width } = p;
+  return (
+    <g data-wire={w.id} className={`wire ${p.sel ? 'sel' : ''} ${p.hlNet ? 'net-hl' : ''}`} data-testid={`wire-${w.id}`} data-color={w.color} data-width={width} data-route={w.route ?? 'manual'} data-bends={w.points?.length ?? 0}>
+      <path d={p.d} className="wire-hit" style={{ strokeWidth: Math.max(10, width + 7) }} />
+      <path d={p.d} className="wire-shadow" style={{ strokeWidth: width + 2 }} />
+      <path d={p.d} stroke={w.color} className="wire-line" style={{ strokeWidth: width }} />
+      {p.ctlD ? <path d={p.ctlD} className="wire-ctl" /> : null}
+      <circle cx={p.ax} cy={p.ay} r={Math.max(2, width * 0.75)} fill={w.color} className="wire-end" />
+      <circle cx={p.bx} cy={p.by} r={Math.max(2, width * 0.75)} fill={w.color} className="wire-end" />
+      {p.sel && w.points?.map((q, i) => <circle key={i} cx={q.x} cy={q.y} r={4.5} className="wire-handle" data-handle={i} data-wire={w.id} data-testid={`bend-${w.id}-${i}`} />)}
+      {p.tag && (
+        <text x={p.tx} y={p.ty} className="wire-label" textAnchor="middle">
+          {p.tag}
+        </text>
+      )}
+    </g>
+  );
+});
+
 // ---------------------------------------------------------------- one component
 export const CompNode = memo(function CompNode({
   c,
@@ -1068,9 +1091,9 @@ function MiniMap({ view, paths, onMove, svg }: { view: View; paths: WirePathInfo
   const W = 180;
   const H = 120;
   const b = circuitBounds(doc.components, paths);
-  const r = svg.current?.getBoundingClientRect();
-  const vw = (r?.width ?? 800) / view.k;
-  const vh = (r?.height ?? 600) / view.k;
+  // size kept current by the workspace's ResizeObserver: reading layout here would force a reflow every frame
+  const vw = liveView.w / view.k;
+  const vh = liveView.h / view.k;
   const vx = -view.x / view.k;
   const vy = -view.y / view.k;
   const x0 = Math.min(b.x0, vx) - 20;
@@ -1083,7 +1106,7 @@ function MiniMap({ view, paths, onMove, svg }: { view: View; paths: WirePathInfo
     const rr = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
     const wx = (e.clientX - rr.left) / s + x0;
     const wy = (e.clientY - rr.top) / s + y0;
-    onMove({ k: view.k, x: (r?.width ?? 800) / 2 - wx * view.k, y: (r?.height ?? 600) / 2 - wy * view.k });
+    onMove({ k: view.k, x: liveView.w / 2 - wx * view.k, y: liveView.h / 2 - wy * view.k });
   };
   return (
     <svg

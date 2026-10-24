@@ -10,7 +10,7 @@ import type { NextionProject } from '../engine/devices/nextion';
 import type { FarmConfig } from '../engine/farm';
 
 export type Tab = 'circuit' | 'python' | 'nextion' | 'farm' | 'web' | 'tests' | 'learn' | 'competition' | 'projects';
-export type DockTab = 'terminal' | 'problems' | 'gpio' | 'uart' | 'logs' | 'code';
+export type DockTab = 'terminal' | 'problems' | 'gpio' | 'uart' | 'logs' | 'code' | 'bus' | 'sensors' | 'events';
 
 export interface TermLine {
   kind: 'out' | 'err' | 'sys' | 'in';

@@ -110,6 +110,8 @@ export class Simulator {
   busLog: BusLogEntry[] = [];
   /** live sensor readings returned to Python (protocol / sensor monitor) */
   readLog: { t: number; comp: string; what: string; value: string }[] = [];
+  /** what the Python program did, in order (run/stop, imports, pin claims, bus opens, errors) */
+  pyEvents: { t: number; kind: 'run' | 'import' | 'gpio' | 'bus' | 'error' | 'end'; msg: string }[] = [];
   logs: SimLog[] = [];
   running = false;
   piPowered = true;
@@ -657,11 +659,13 @@ export class Simulator {
     g.pwmDuty = 0;
     if (b <= 1) this.log(`GPIO${b} is reserved for the HAT ID EEPROM (ID_SD/ID_SC) — avoid it`, 'warn');
     this.log(`GPIO${b} configured as ${mode.toUpperCase()}${mode === 'input' ? ` (pull ${pull})` : ''} by ${owner}`);
+    this.pyEvent('gpio', `GPIO${b} (pin ${BCM_TO_PHYS[b]}) → ${mode.toUpperCase()}${mode === 'input' ? `, pull ${pull}` : ''} · ${owner}`);
     this.evaluate(t);
     return b;
   }
 
   gpioRelease(b: number, t?: number) {
+    if (this.claims.has(b)) this.pyEvent('gpio', `GPIO${b} released (${this.claims.get(b)})`);
     this.claims.delete(b);
     this.watchers.delete(b);
     this.gpio[b] = freshGpio(b);
@@ -870,6 +874,7 @@ export class Simulator {
     Object.assign(this.gpio[def.tx], { mode: 'alt', alt: `${def.label} TX`, pull: 'none' });
     Object.assign(this.gpio[def.rx], { mode: 'alt', alt: `${def.label} RX`, pull: 'up' });
     this.uarts.set(c, { baud, port });
+    this.pyEvent('bus', `serial ${port} opened at ${baud} baud (TX GPIO${def.tx}, RX GPIO${def.rx})`);
     this.rxq.set(c, []);
     this.log(`${port} opened at ${baud} baud (TX GPIO${def.tx}, RX GPIO${def.rx})`);
     this.evaluate();
@@ -1040,6 +1045,12 @@ export class Simulator {
     return out;
   }
 
+  pyEvent(kind: Simulator['pyEvents'][number]['kind'], msg: string) {
+    this.pyEvents.push({ t: this.clock.now(), kind, msg });
+    if (this.pyEvents.length > 300) this.pyEvents.splice(0, this.pyEvents.length - 300);
+    this.notify();
+  }
+
   private pushBusLog(e: BusLogEntry) {
     this.busLog.push(e);
     if (this.busLog.length > 400) this.busLog.splice(0, this.busLog.length - 400);
@@ -1099,6 +1110,7 @@ export class Simulator {
       if (o && !o.startsWith('spi')) throw new SimError('OSError', `[Errno 16] Device or resource busy: GPIO${p} is used by ${o}`);
     }
     for (const p of pins) this.claims.set(p, 'spi0');
+    this.pyEvent('bus', `SPI0 opened: /dev/spidev0.${dev} (MOSI GPIO10, MISO GPIO9, SCLK GPIO11, CE${dev} GPIO${SPI0.ce[dev]})`);
     Object.assign(this.gpio[SPI0.mosi], { mode: 'alt', alt: 'SPI0 MOSI', pull: 'none' });
     Object.assign(this.gpio[SPI0.sclk], { mode: 'alt', alt: 'SPI0 SCLK', pull: 'none' });
     Object.assign(this.gpio[SPI0.miso], { mode: 'alt', alt: 'SPI0 MISO', pull: 'none' });
@@ -1304,6 +1316,9 @@ export class Simulator {
     this.devices.clear();
     this.powerState.clear();
     this.uartLog = [];
+    this.busLog = [];
+    this.readLog = [];
+    this.pyEvents = [];
     this.logs = [];
     this.runtimeIssues.clear();
     this.farm.reset(this.doc.farm, this.clock.now());

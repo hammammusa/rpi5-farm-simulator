@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useApp } from '../state/store';
-import { runProgram, saveNow, startLoop, startRuntime, stopProgram, restoreLast } from '../state/engine';
+import { runProgram, saveNow, startLoop, startRuntime, stopProgram, restoreLast, writeRecovery } from '../state/engine';
 import { useT } from '../i18n';
 import { TopBar } from './TopBar';
 import { Library } from './Library';
@@ -143,6 +143,7 @@ export function App() {
     window.addEventListener('keydown', kd);
     const before = (e: BeforeUnloadEvent) => {
       if (useApp.getState().dirty) {
+        writeRecovery();
         void saveNow();
         e.preventDefault();
       }

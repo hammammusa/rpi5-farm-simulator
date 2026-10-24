@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { BCM_TO_PHYS, HARDWARE_PWM_PINS } from '../engine/pi5';
 import { sim, submitStdin, useSimVersion } from '../state/engine';
 import { useApp, type DockTab } from '../state/store';
-import { pyErrorText, useT } from '../i18n';
+import { issueText, pyErrorText, useT } from '../i18n';
+import { compName } from '../state/wiring';
+import { BusMonitor, EventMonitor, SensorMonitor } from './Monitors';
 import { Problems } from './Problems';
 import { getPart } from '../engine/parts';
 import type { SerialTerminal } from '../engine/devices/serialTerm';
@@ -65,9 +67,34 @@ export function Terminal() {
 export function GpioMonitor() {
   useSimVersion();
   const t = useT();
-  const rows = sim.gpioStateTable();
+  const doc = useApp((s) => s.doc);
+  const [onlyUsed, setOnlyUsed] = useState(true);
+  const pi = doc.components.find((c) => c.type === 'rpi5');
+  const piVis = pi ? sim.vis.get(pi.id) : undefined;
+  const rows = sim.gpioStateTable().map((r) => {
+    const netId = sim.net.gpioNet.get(r.bcm);
+    const net = netId === undefined ? null : sim.net.nets[netId];
+    const attached = net ? [...net.comps].filter((c) => c !== pi?.id).map((c) => compName(doc, c)) : [];
+    const ma: number | undefined = piVis?.gpio?.[r.bcm]?.ma;
+    const issues = netId === undefined ? [] : sim.issues.filter((i) => i.pins?.some((p) => sim.net.netOf(p) === netId));
+    const driving = r.mode === 'output' || r.mode === 'pwm';
+    const state = !attached.length
+      ? t('not connected')
+      : driving
+        ? `${t('driving')}${ma !== undefined ? ` ${ma.toFixed(1)} mA` : ''}`
+        : r.mode === 'alt'
+          ? t('bus')
+          : r.v === null
+            ? t('floating')
+            : t('input');
+    return { ...r, attached, state, issues };
+  });
+  const shown = onlyUsed ? rows.filter((r) => r.owner || r.attached.length || r.mode !== 'input') : rows;
   return (
     <div className="gpio-monitor" data-testid="gpio-monitor">
+      <label className="small">
+        <input type="checkbox" checked={onlyUsed} onChange={(e) => setOnlyUsed(e.target.checked)} data-testid="gpio-only-used" /> {t('Only pins that are wired or used by the code')}
+      </label>
       <table className="data-table" dir="ltr">
         <thead>
           <tr>
@@ -79,11 +106,14 @@ export function GpioMonitor() {
             <th>{t('Pull')}</th>
             <th>PWM</th>
             <th>{t('Used by')}</th>
+            <th>{t('Attached component')}</th>
+            <th>{t('Electrical state')}</th>
+            <th>{t('Warnings')}</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.bcm} className={r.owner ? 'used' : ''} data-gpio={r.bcm}>
+          {shown.map((r) => (
+            <tr key={r.bcm} className={`${r.owner ? 'used' : ''} ${r.issues.some((i) => i.severity === 'error') ? 'row-err' : r.issues.length ? 'row-warn' : ''}`} data-gpio={r.bcm}>
               <td>GPIO{r.bcm}</td>
               <td>{BCM_TO_PHYS[r.bcm]}</td>
               <td>{r.mode === 'alt' ? r.alt : r.mode.toUpperCase()}</td>
@@ -92,6 +122,9 @@ export function GpioMonitor() {
               <td>{r.mode === 'input' ? r.pull : ''}</td>
               <td>{r.mode === 'pwm' ? `${Math.round(r.pwmDuty * 100)}% @ ${r.pwmFreq}Hz${HARDWARE_PWM_PINS.includes(r.bcm) ? ' (HW)' : ''}` : ''}</td>
               <td className="muted">{r.owner ?? ''}</td>
+              <td data-testid={`gpio-attached-${r.bcm}`}>{r.attached.join(', ') || '—'}</td>
+              <td>{r.state}</td>
+              <td className="small">{r.issues.map((i) => `${i.severity === 'error' ? '⛔' : '⚠'} ${issueText(lang(), i.code, i.params).title}`).join(' · ')}</td>
             </tr>
           ))}
         </tbody>
@@ -99,6 +132,8 @@ export function GpioMonitor() {
     </div>
   );
 }
+
+const lang = () => useApp.getState().lang;
 
 const hex = (b: number[]) => b.map((x) => x.toString(16).padStart(2, '0').toUpperCase()).join(' ');
 const ascii = (b: number[]) => b.map((x) => (x >= 32 && x < 127 ? String.fromCharCode(x) : '·')).join('');
@@ -182,15 +217,24 @@ export function Dock({ withCode = true }: { withCode?: boolean }) {
   const errs = sim.issues.filter((i) => i.severity === 'error').length;
   const warns = sim.issues.filter((i) => i.severity === 'warning').length;
   const [h, setH] = useState(() => Number(localStorageGet('rpi5sim.dockH') ?? 280));
+  const mode = useApp((s) => s.mode);
+  // Beginner mode keeps the essentials (never hides problems); Advanced adds protocol inspection and logs
   const tabs: [DockTab, string][] = [
     ...(withCode ? ([['code', 'Code']] as [DockTab, string][]) : []),
     ['terminal', 'Terminal'],
     ['problems', 'Problems'],
     ['gpio', 'GPIO monitor'],
+    ['sensors', 'Sensor readings'],
+    ['events', 'Python events'],
     ['uart', 'UART monitor'],
-    ['logs', 'Simulation log'],
+    ...(mode === 'advanced'
+      ? ([
+          ['bus', 'I2C / SPI monitor'],
+          ['logs', 'Simulation log'],
+        ] as [DockTab, string][])
+      : []),
   ];
-  const cur = !withCode && tab === 'code' ? 'terminal' : tab;
+  const cur = (!withCode && tab === 'code') || !tabs.some(([id]) => id === tab) ? 'terminal' : tab;
   const startResize = (e: React.PointerEvent) => {
     const y0 = e.clientY;
     const h0 = h;
@@ -226,6 +270,9 @@ export function Dock({ withCode = true }: { withCode?: boolean }) {
           {cur === 'gpio' && <GpioMonitor />}
           {cur === 'uart' && <UartMonitor />}
           {cur === 'logs' && <Logs />}
+          {cur === 'bus' && <BusMonitor />}
+          {cur === 'sensors' && <SensorMonitor />}
+          {cur === 'events' && <EventMonitor />}
         </div>
       )}
     </section>
