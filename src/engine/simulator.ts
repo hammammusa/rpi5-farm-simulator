@@ -94,6 +94,8 @@ function hash12(s: string) {
 export class Simulator {
   /** seconds a finished program keeps its devices open (set by automatic checks) */
   holdOnExit = 0;
+  /** GPIO lines released by the program so far (closing devices; all of them at exit) */
+  releases = 0;
   doc!: ProjectDoc;
   net!: Netlist;
   clock: SimClock;
@@ -669,7 +671,10 @@ export class Simulator {
   }
 
   gpioRelease(b: number, t?: number) {
-    if (this.claims.has(b)) this.pyEvent('gpio', `GPIO${b} released (${this.claims.get(b)})`);
+    if (this.claims.has(b)) {
+      this.pyEvent('gpio', `GPIO${b} released (${this.claims.get(b)})`);
+      this.releases++;
+    }
     this.claims.delete(b);
     this.watchers.delete(b);
     this.gpio[b] = freshGpio(b);
