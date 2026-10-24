@@ -12,6 +12,7 @@ import { CodePane } from './CodePane';
 const NextionTab = lazy(() => import('./nextion/NextionTab'));
 const FarmTab = lazy(() => import('./farm/FarmTab'));
 const WebTab = lazy(() => import('./web/WebTab'));
+const ExportDialog = lazy(() => import('./ExportDialog'));
 const TestsTab = lazy(() => import('./tests/TestsTab'));
 const LearnTab = lazy(() => import('./learn/LearnTab'));
 const CompetitionTab = lazy(() => import('./learn/CompetitionTab'));
@@ -101,6 +102,7 @@ export function App() {
   const theme = useApp((s) => s.theme);
   const lang = useApp((s) => s.lang);
   const toast = useApp((s) => s.toast);
+  const exportOpen = useApp((s) => s.exportOpen);
   const t = useT();
 
   useEffect(() => {
@@ -168,6 +170,11 @@ export function App() {
           {tab === 'projects' && <ProjectsTab />}
         </Suspense>
       </main>
+      {exportOpen && (
+        <Suspense fallback={null}>
+          <ExportDialog />
+        </Suspense>
+      )}
       {toast && (
         <div className="toast" role="status">
           {toast}

@@ -57,6 +57,7 @@ interface AppState {
   highlightNet: PinRef | null;
   /** Beginner shows hints and explanations; Advanced shows protocol/engine detail. Never changes results. */
   mode: 'beginner' | 'advanced';
+  exportOpen: boolean;
 
   setDoc(doc: ProjectDoc, opts?: { history?: boolean; markDirty?: boolean }): void;
   edit(fn: (d: ProjectDoc) => ProjectDoc, history?: boolean): void;
@@ -97,6 +98,8 @@ interface AppState {
   setSpeed(s: number): void;
   showToast(msg: string): void;
   rename(name: string): void;
+  setDescription(text: string): void;
+  setExportOpen(open: boolean): void;
   setView(patch: Partial<ViewSettings>): void;
   copySelection(): number;
   paste(at?: Pt): void;
@@ -181,6 +184,7 @@ export const useApp = create<AppState>((set, get) => ({
   toast: null,
   highlightNet: null,
   mode: readPref<'beginner' | 'advanced'>('rpi5sim.mode', 'beginner'),
+  exportOpen: false,
 
   setDoc(doc, opts = {}) {
     const st = get();
@@ -401,6 +405,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
   rename(name) {
     get().edit((d) => ({ ...d, name }), false);
+  },
+  setDescription(text) {
+    get().edit((d) => ({ ...d, description: text }), false);
+  },
+  setExportOpen(open) {
+    set({ exportOpen: open });
   },
   setView(patch) {
     const d = get().doc;

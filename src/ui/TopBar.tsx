@@ -101,6 +101,9 @@ export function TopBar() {
         </span>
       </div>
       <div className="prefs">
+        <button onClick={() => st.setExportOpen(true)} title={t('Export project: image, wiring table, BOM, PDF, ZIP')} aria-label={t('Export project')} data-testid="export-btn">
+          ⬇
+        </button>
         <button onClick={() => void saveNow()} title={t('Save (Ctrl+S)')} aria-label={t('Save')}>
           💾
         </button>

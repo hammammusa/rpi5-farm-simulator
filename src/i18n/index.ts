@@ -1,8 +1,9 @@
 import { useApp } from '../state/store';
 import { AR as AR1 } from './ar';
 import { AR2 } from './ar2';
+import { AR3 } from './ar3';
 
-const AR: Record<string, string> = { ...AR1, ...AR2 };
+export const AR: Record<string, string> = { ...AR1, ...AR2, ...AR3 };
 import { FARM_ALARM_TEXT, ISSUE_TEXT, PY_ERROR_TEXT, fill } from './issues';
 
 export type Lang = 'en' | 'ar';

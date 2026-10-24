@@ -70,6 +70,9 @@ export default function ProjectsTab() {
         <button onClick={() => void saveNow().then(refresh)} data-testid="save-project">
           💾 {t('Save current')}
         </button>
+        <button className="primary" onClick={() => useApp.getState().setExportOpen(true)} data-testid="export-open">
+          ⬇ {t('Export project…')}
+        </button>
         <button onClick={() => download(exportJson(doc), `${doc.name.replace(/[^\w-]+/g, '_')}.json`)} data-testid="export-json">
           ⬇ {t('Export JSON')}
         </button>

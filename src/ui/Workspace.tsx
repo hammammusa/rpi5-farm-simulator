@@ -961,7 +961,7 @@ export function Workspace() {
 }
 
 // ---------------------------------------------------------------- one component
-const CompNode = memo(function CompNode({
+export const CompNode = memo(function CompNode({
   c,
   sel,
   iss,

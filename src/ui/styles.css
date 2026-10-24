@@ -1836,3 +1836,109 @@ p.err {
   font: 600 12px var(--mono);
   color: var(--accent2);
 }
+/* ---- export dialog */
+.modal.export-modal {
+  width: min(1100px, calc(100vw - 32px));
+}
+.exp-section {
+  border-top: 1px solid var(--line);
+  padding: 8px 0 4px;
+}
+.exp-section h3 {
+  margin: 2px 0 8px;
+  font-size: 14px;
+}
+.exp-image {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.exp-preview {
+  flex: 1 1 380px;
+  min-height: 180px;
+  max-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.exp-preview img {
+  max-width: 100%;
+  max-height: 318px;
+  object-fit: contain;
+}
+.exp-preview.bg-transparent {
+  background: repeating-conic-gradient(#8883 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+}
+.exp-opts {
+  flex: 0 1 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.exp-opts label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.exp-opts label.chk,
+.exp-section label.chk {
+  justify-content: flex-start;
+}
+.exp-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.exp-tabs button.on {
+  background: var(--accent);
+  color: #fff;
+}
+.exp-table-wrap {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.exp-table {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.exp-table td:last-child {
+  white-space: normal;
+  min-width: 260px;
+}
+.exp-table tr.row-err td {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.exp-table tr.row-warn td {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+.swatch-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-inline-end: 4px;
+  border: 1px solid #0004;
+  vertical-align: -1px;
+}
+.exp-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.exp-desc textarea {
+  width: 100%;
+  font: inherit;
+  background: var(--bg2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px;
+}
