@@ -79,27 +79,30 @@ for i in range(3):
       minutes: 15,
       title: ['Grow-light photoperiod (18/6)', 'دورة الإضاءة الزراعية (18/6)'],
       goal: ['Switch a grow light from the clock: on from 06:00 to 24:00.', 'تشغيل إضاءة النمو حسب الساعة: من 06:00 حتى 24:00.'],
-      result: ['The program prints the time and switches the light on (the simulation starts at 08:00).', 'يطبع البرنامج الوقت ويشغّل الإضاءة (تبدأ المحاكاة عند الساعة 08:00).'],
-      tryIt: ['Use the ⏩ fast-forward button to jump to the evening and watch the schedule.', 'استخدم زر التقديم السريع ⏩ للانتقال إلى المساء وراقب الجدول.'],
+      result: ['The schedule is checked for a few hours of the day, then the light is switched for the current time and the decision is printed.', 'يُفحص الجدول لعدة ساعات من اليوم، ثم تُشغَّل الإضاءة أو تُطفأ حسب الوقت الحالي ويُطبع القرار.'],
+      tryIt: ['Use the ⏩ fast-forward button to jump past midnight and run again.', 'استخدم زر التقديم السريع ⏩ لتجاوز منتصف الليل ثم شغّل مجدداً.'],
       modify: ['Change to a 12/12 flowering schedule.', 'غيّر الجدول إلى 12/12 لمرحلة الإزهار.'],
-      explain: ['datetime.now().hour is compared with the on/off hours; a MOSFET dims the 12 V LED panel.', 'تُقارن datetime.now().hour بساعتي التشغيل والإيقاف، ويتحكم MOSFET بلوحة LED بجهد 12 فولت.'],
+      explain: ['One function decides from the hour; testing it on fixed hours first proves the schedule without waiting a whole day. A MOSFET dims the 12 V LED panel.', 'دالة واحدة تقرر حسب الساعة، واختبارها على ساعات ثابتة أولاً يثبت صحة الجدول دون انتظار يوم كامل. ويتحكم MOSFET بلوحة LED بجهد 12 فولت.'],
       code: `from datetime import datetime
 from smartfarm import GrowLight
 from time import sleep
 
-light = GrowLight(18)
 ON_HOUR, OFF_HOUR = 6, 24
-for i in range(3):
-    now = datetime.now()
-    on = ON_HOUR <= now.hour < OFF_HOUR
-    if on:
-        light.on(1.0)
-    else:
-        light.off()
-    print(f"{now:%H:%M} -> grow light {'ON' if on else 'off'}")
-    sleep(1)
+
+def light_on(hour):
+    return ON_HOUR <= hour < OFF_HOUR
+
+print("schedule:", ", ".join(f"{h:02d}:00 {'ON' if light_on(h) else 'off'}" for h in (0, 5, 6, 12, 23)))
+light = GrowLight(18)
+now = datetime.now()
+if light_on(now.hour):
+    light.on(1.0)
+else:
+    light.off()
+print(f"now {now:%H:%M} -> grow light {'ON' if light_on(now.hour) else 'off'}")
+sleep(1)
 `,
-      test: { expect: /08:0\d -> grow light ON/, seconds: 4, verify: (s) => check(running(s, 'light'), 'grow light on') },
+      test: { expect: /schedule: 00:00 off, 05:00 off, 06:00 ON, 12:00 ON, 23:00 ON\s+now \d\d:\d\d -> grow light (ON|off)/, seconds: 3 },
     },
     (c) => c.mosfetLoad('light', 'grow_light', 18, {}, 'Grow light', false),
   ),

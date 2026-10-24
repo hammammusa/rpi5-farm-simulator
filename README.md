@@ -17,7 +17,8 @@ Everything runs client-side: real CPython 3.13 (Pyodide/WebAssembly) in a Web Wo
 | Nextion | NX3224K028 (2.8", 320×240) reference model. Page designer, live screen, touch events over UART (`65 … FF FF FF`), documented instruction subset (`txt/val/pco/bco`, `page`, `vis`, `get`, `sendme`, `click`, `covx`, `dim`, `bkcmd`, `baud` …), return codes, local/global scope, baud mismatch. **.HMI/.TFT files are not supported**; layouts export as JSON |
 | Smart farm | Reservoir, A/B/pH-down tanks, circulation, dosing (ml, calibration error), fresh water/drain, leak, plant uptake, EC/pH mixing, room climate (fan, heater, humidifier, lights), CO₂, power/energy, physical alarms (dry run, overflow, A+B together, leak). Event-accurate integration, 1×/2×/5×/10× speed and 600× fast-forward |
 | Web | In-app browser for `http://raspberrypi.local:5000` that renders pages served by your Flask program, with `fetch`, forms and links bridged to Python; desktop/tablet/phone widths |
-| Learning | 20 progressive examples (blink → complete City Farming controller), each with objective, parts, ready wiring, editable code, expected result, "break it" exercises and an automated check |
+| Example library | 150 runnable examples in 15 categories (GPIO, sensors, motors, displays, communication, smart home, robotics, security, industrial, smart farming, energy, digital logic, data & logging, Python challenges, integrated projects). Each has a goal, level, duration, parts list, pre-wired circuit with a default layout, ready code, expected result, test steps, explanation and an automatic check; opens as a private copy. Search, category/level/component filters, sorting, favourites, tried/completed progress and suggested next examples |
+| Auto Arrange | One click (or the canvas menu) places the Pi on the left and the parts in labelled functional zones, routes every wire orthogonally around part bodies with track spacing, optionally applies standard wire colours (red +, black GND); connections, settings and code are untouched, Ctrl+Z undoes it, and wires it routed follow their parts when you drag them |
 | Competition mode | Timed challenges: Module A (controller + web), Module B (Nextion), and a hardware fault hunt, with automatic checkpoints, score and mistake report |
 | Tests | 15 in-app acceptance tests (PART 16), downloadable report; Vitest unit tests (engine, devices, real Python via Node Pyodide, all examples); Playwright end-to-end tests |
 | Projects | IndexedDB autosave, create/rename/duplicate/delete, import/export JSON and ZIP (code + wiring table + Nextion layout) |
@@ -53,11 +54,12 @@ E2E_BASE_URL=https://<deployment>/ npx playwright test   # same suite against pr
 ## Architecture
 
 ```
-src/engine/      circuit graph, DC solver, part models, validation, farm model, protocol devices (UI-independent)
+src/engine/      circuit graph, DC solver, Auto Arrange (layout.ts), part models, validation, farm model, protocol devices (UI-independent)
 src/runtime/     Pyodide worker, SharedArrayBuffer bridge, Python shims (src/runtime/python)
 src/state/       zustand store, engine singletons, IndexedDB persistence, wiring export
 src/ui/          React UI (workspace, inspector, editor, dock, Nextion, farm, web, tests, learn, competition)
-src/examples/    20 lessons + City Farming controller sources + Nextion templates
+src/examples/    20 guided lessons + City Farming controller sources + Nextion templates
+src/library/     example library: circuit DSL, the categories, default-layout builder and in-app checks
 src/tests/       in-app test host and the 15 acceptance tests
 src/competition/ practice challenges and checkpoints
 tests/unit       Vitest (engine, devices, real Python through Node Pyodide)

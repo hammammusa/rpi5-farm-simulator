@@ -92,6 +92,8 @@ function hash12(s: string) {
 }
 
 export class Simulator {
+  /** seconds a finished program keeps its devices open (set by automatic checks) */
+  holdOnExit = 0;
   doc!: ProjectDoc;
   net!: Netlist;
   clock: SimClock;
@@ -229,6 +231,8 @@ export class Simulator {
       const m = hasPart(c.type) ? getPart(c.type) : null;
       if (m?.pulse && m.pulse.hz((k) => this.sensorValue(c, k), this.vis.get(c.id)) > 0) return true;
       if (this.rt.get(c.id)?.echoUntil && this.rt.get(c.id)!.echoUntil > this.clock.now()) return true;
+      // a running hold timer (PIR) changes the output later without any other event
+      if (this.rt.get(c.id)?.holdUntil !== undefined) return true;
     }
     return false;
   }

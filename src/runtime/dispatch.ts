@@ -50,6 +50,8 @@ export function dispatchRpc(s: Simulator, method: string, a: any, t: number, hoo
       return s.dhtRead(a.pin, a.kind);
     case 'w1.list':
       return s.w1List();
+    case 'sim.hold_on_exit':
+      return s.holdOnExit;
     case 'w1.read':
       return s.w1Read(a.id);
     case 'cpu.temp':

@@ -7,7 +7,7 @@ import type { ProjectDoc } from '../engine/types';
 import { translate, type Lang } from '../i18n';
 import { sim } from '../state/engine';
 import { wiringTable } from '../state/wiring';
-import { renderCircuitSvg, svgToCanvas, circuitPng, safeScale, type ImageOptions } from './circuitImage';
+import { renderCircuitSvg, svgToCanvas, circuitPng, safeScale, DEFAULT_IMAGE, type ImageOptions } from './circuitImage';
 import { renderDocument, type Column } from './docPdf';
 import {
   BOM_COLUMNS,
@@ -21,6 +21,9 @@ import {
   type ProjectReport,
 } from './report';
 import { buildXlsx, type Sheet } from './xlsx';
+
+// handle for automated browser checks (export every example); present once the export module is loaded
+(globalThis as any).__rpi5export = { renderCircuitSvg, circuitPng, buildReport, DEFAULT_IMAGE };
 
 export const fileBase = (doc: ProjectDoc) => doc.name.replace(/[^\w؀-ۿ-]+/g, '_').replace(/^_+|_+$/g, '') || 'project';
 

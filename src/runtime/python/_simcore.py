@@ -682,6 +682,10 @@ def _run_main(path):
         srv = sys.modules.get('flask')
         if srv is not None and getattr(srv, '_background_server', None):
             idle_forever()
+        # automatic checks look at the outputs the program left before gpiozero closes them
+        hold = call('sim.hold_on_exit')
+        if hold:
+            sleep(hold)
     except SimStopped:
         status = 'stopped'
     except KeyboardInterrupt:

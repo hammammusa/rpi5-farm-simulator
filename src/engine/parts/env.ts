@@ -513,8 +513,16 @@ export const pirSensor: PartManifest = {
     const vs = ctx.rt.vs ?? 0;
     if (vs < 4.5 || ctx.fault === 'disconnected') return;
     const now = ctx.sim.now;
-    if (ctx.props.motion) ctx.rt.until = now + Number(ctx.props.hold);
-    const high = ctx.fault === 'stuck' ? !!ctx.rt.stuckHigh : !!ctx.props.motion || (ctx.rt.until ?? 0) > now;
+    // the hold time runs from the moment the motion ends (HC-SR501 retriggering mode)
+    if (ctx.props.motion) ctx.rt.moving = true;
+    else if (ctx.rt.moving) {
+      ctx.rt.moving = false;
+      ctx.rt.holdUntil = now + Number(ctx.props.hold);
+    }
+    const holding = (ctx.rt.holdUntil ?? 0) > now;
+    // cleared one evaluation after it expires, so the simulator re-evaluates until OUT has fallen
+    if (ctx.rt.holdUntil !== undefined && !holding) delete ctx.rt.holdUntil;
+    const high = ctx.fault === 'stuck' ? !!ctx.rt.stuckHigh : !!ctx.props.motion || holding;
     ctx.V('out', ctx.node('OUT'), ctx.node('GND'), high ? 3.3 : 0, 100);
   },
   post(ctx) {
