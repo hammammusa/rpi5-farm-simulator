@@ -16,7 +16,15 @@ export interface ComponentInstance {
   rotation: Rotation;
   props: Record<string, any>;
   label?: string;
+  /** position locked: the part cannot be dragged or nudged */
+  locked?: boolean;
+  /** group id: selecting one member selects the whole group */
+  group?: string;
+  /** hide this part's label in the workspace and exports */
+  hideLabel?: boolean;
 }
+
+export type WireRoute = 'manual' | 'orthogonal' | 'diag45' | 'straight';
 
 export interface Wire {
   id: string;
@@ -24,7 +32,29 @@ export interface Wire {
   to: PinRef;
   color: string;
   label?: string;
+  /** control (bend) points; the drawn path is expanded from them according to `route` */
   points?: { x: number; y: number }[];
+  /** drawing style; 'manual' (default) = straight segments through the bend points */
+  route?: WireRoute;
+  /** stroke width in workspace units (default 3) */
+  width?: number;
+}
+
+/** Workspace appearance saved with the project (also used by exports). */
+export interface ViewSettings {
+  background: string;
+  gridSize: number;
+  showGrid: boolean;
+  snap: boolean;
+  showGpioNumbers: boolean;
+  showNames: boolean;
+  showWireLabels: boolean;
+  showNetNames: boolean;
+  showVoltages: boolean;
+  showCrossings: boolean;
+  wireWidth: number;
+  pinShape: 'square' | 'round';
+  minimap: boolean;
 }
 
 export interface ProjectFile {
@@ -33,7 +63,8 @@ export interface ProjectFile {
 }
 
 export interface ProjectDoc {
-  schema: 1;
+  /** 1 = original format, 2 = adds wire geometry/style, part lock/groups and view settings */
+  schema: 1 | 2;
   id: string;
   name: string;
   createdAt: number;
@@ -47,6 +78,10 @@ export interface ProjectDoc {
   sim: { speed: number; startTime?: string };
   exampleId?: string;
   notes?: string;
+  /** workspace appearance (schema 2) */
+  view?: ViewSettings;
+  /** short description used in exported documentation */
+  description?: string;
 }
 
 export type PinKind = 'power' | 'ground' | 'gpio' | 'digital' | 'analog' | 'passive' | 'terminal' | 'nc' | 'hole';

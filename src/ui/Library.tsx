@@ -4,6 +4,7 @@ import type { Category } from '../engine/types';
 import { snap } from '../engine/geometry';
 import { useApp } from '../state/store';
 import { useT } from '../i18n';
+import { workspaceCenter } from './Workspace';
 
 const CATS: { id: Category; label: string }[] = [
   { id: 'board', label: 'Boards' },
@@ -33,19 +34,8 @@ export function Library() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const add = (m: PartManifest) => {
-    const svg = document.querySelector('[data-testid="workspace"]') as SVGSVGElement | null;
-    const g = svg?.querySelector('g[transform]');
-    let x = 400,
-      y = 300;
-    if (svg && g) {
-      const r = svg.getBoundingClientRect();
-      const tr = /translate\(([-\d.]+) ([-\d.]+)\) scale\(([-\d.]+)\)/.exec(g.getAttribute('transform') ?? '');
-      if (tr) {
-        x = (r.width / 2 - +tr[1]) / +tr[3] - m.w / 2;
-        y = (r.height / 2 - +tr[2]) / +tr[3] - m.h / 2;
-      }
-    }
-    useApp.getState().addComponent(m.type, snap(x), snap(y));
+    const c = workspaceCenter();
+    useApp.getState().addComponent(m.type, snap(c.x - m.w / 2), snap(c.y - m.h / 2));
   };
   const ql = q.trim().toLowerCase();
   const list = PARTS.filter((p) => !p.hidden && (!ql || `${p.name} ${p.type} ${p.description} ${p.interfaces?.join(' ') ?? ''}`.toLowerCase().includes(ql)));

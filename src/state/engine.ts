@@ -3,7 +3,8 @@ import { useSyncExternalStore } from 'react';
 import { Simulator } from '../engine/simulator';
 import { PythonRuntime, type RunResult } from '../runtime/bridge';
 import { useApp } from './store';
-import { lastProjectId, loadProject as idbLoad, saveProject } from './persist';
+import { lastProjectId, loadProject as idbLoad, migrate, saveProject } from './persist';
+import { newProject } from '../engine/project';
 import { translate } from '../i18n';
 import { pyErrorText } from '../i18n';
 
@@ -197,4 +198,4 @@ export async function restoreLast(): Promise<boolean> {
 }
 
 // expose for automated tests and debugging
-(globalThis as any).__rpi5sim = { sim, useApp, runProgram, stopProgram, getRuntime, saveNow };
+(globalThis as any).__rpi5sim = { sim, useApp, runProgram, stopProgram, getRuntime, saveNow, newProject, migrate };

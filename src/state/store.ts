@@ -1,9 +1,11 @@
 // Application state (zustand). The project document lives here; the simulator
 // is notified of every document change. Undo/redo snapshots the editable parts.
 import { create } from 'zustand';
-import { newProject, uid } from '../engine/project';
-import { getPart, withDefaults } from '../engine/parts';
-import type { ComponentInstance, ProjectDoc, Rotation, Wire } from '../engine/types';
+import { defaultView, newProject, uid } from '../engine/project';
+import { getPart, hasPart, pinsOf, withDefaults } from '../engine/parts';
+import { boundsOf, pinWorld, snap as snapTo } from '../engine/geometry';
+import { autoRoute, insertBend, removeBend, type Pt, type Rect } from '../engine/routing';
+import type { ComponentInstance, PinRef, ProjectDoc, Rotation, ViewSettings, Wire, WireRoute } from '../engine/types';
 import type { NextionProject } from '../engine/devices/nextion';
 import type { FarmConfig } from '../engine/farm';
 
@@ -51,6 +53,10 @@ interface AppState {
   /** automated tests are driving the app: no autosave */
   testing: boolean;
   toast: string | null;
+  /** pin whose whole electrical net is highlighted (wire context menu → Highlight net) */
+  highlightNet: PinRef | null;
+  /** Beginner shows hints and explanations; Advanced shows protocol/engine detail. Never changes results. */
+  mode: 'beginner' | 'advanced';
 
   setDoc(doc: ProjectDoc, opts?: { history?: boolean; markDirty?: boolean }): void;
   edit(fn: (d: ProjectDoc) => ProjectDoc, history?: boolean): void;
@@ -91,7 +97,42 @@ interface AppState {
   setSpeed(s: number): void;
   showToast(msg: string): void;
   rename(name: string): void;
+  setView(patch: Partial<ViewSettings>): void;
+  copySelection(): number;
+  paste(at?: Pt): void;
+  toggleLock(ids?: string[]): void;
+  groupSelected(): void;
+  ungroupSelected(): void;
+  setHideLabel(ids: string[], hide: boolean): void;
+  align(kind: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'): void;
+  distribute(axis: 'h' | 'v'): void;
+  addBend(id: string, p: Pt): void;
+  removeBendAt(id: string, p: Pt, index?: number): void;
+  setWireRoute(id: string, route: WireRoute): void;
+  autoRouteWire(id: string): boolean;
+  setHighlightNet(p: PinRef | null): void;
+  setMode(m: 'beginner' | 'advanced'): void;
 }
+
+/** Workspace position of a component pin. */
+export function pinPosition(doc: ProjectDoc, r: PinRef): Pt | null {
+  const c = doc.components.find((x) => x.id === r.comp);
+  if (!c || !hasPart(c.type)) return null;
+  const m = getPart(c.type);
+  const p = pinsOf(m, withDefaults(m, c.props)).find((x) => x.id === r.pin);
+  return p ? pinWorld(c, p, m.w, m.h) : null;
+}
+
+export function compBounds(c: ComponentInstance): Rect {
+  const m = getPart(c.type);
+  return boundsOf(c, m.w, m.h);
+}
+
+export function viewOf(doc: ProjectDoc): ViewSettings {
+  return { ...defaultView(), ...(doc.view ?? {}) };
+}
+
+let clipboard: { components: ComponentInstance[]; wires: Wire[] } | null = null;
 
 const snap = (d: ProjectDoc): Snapshot => ({ components: d.components, wires: d.wires, nextion: d.nextion, farm: d.farm, files: d.files, mainFile: d.mainFile });
 
@@ -138,6 +179,8 @@ export const useApp = create<AppState>((set, get) => ({
   ff: null,
   testing: false,
   toast: null,
+  highlightNet: null,
+  mode: readPref<'beginner' | 'advanced'>('rpi5sim.mode', 'beginner'),
 
   setDoc(doc, opts = {}) {
     const st = get();
@@ -154,6 +197,7 @@ export const useApp = create<AppState>((set, get) => ({
       future: [],
       selection: [],
       selectedWire: null,
+      highlightNet: null,
       dirty: false,
       activeFile: doc.mainFile,
       pyError: null,
@@ -186,7 +230,9 @@ export const useApp = create<AppState>((set, get) => ({
   },
   moveComponents(ids, dx, dy, history = false) {
     if (!dx && !dy) return;
-    const set_ = new Set(ids);
+    const locked = new Set(get().doc.components.filter((c) => c.locked).map((c) => c.id));
+    const set_ = new Set(ids.filter((i) => !locked.has(i)));
+    if (!set_.size) return;
     get().edit((d) => ({
       ...d,
       components: d.components.map((c) => (set_.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)),
@@ -355,6 +401,164 @@ export const useApp = create<AppState>((set, get) => ({
   },
   rename(name) {
     get().edit((d) => ({ ...d, name }), false);
+  },
+  setView(patch) {
+    const d = get().doc;
+    get().setDoc({ ...d, view: { ...viewOf(d), ...patch } });
+  },
+  copySelection() {
+    const st = get();
+    const ids = new Set(st.selection);
+    if (!ids.size) return 0;
+    clipboard = {
+      components: st.doc.components.filter((c) => ids.has(c.id)).map((c) => ({ ...c, props: { ...c.props } })),
+      wires: st.doc.wires.filter((w) => ids.has(w.from.comp) && ids.has(w.to.comp)).map((w) => ({ ...w, points: w.points?.map((p) => ({ ...p })) })),
+    };
+    return clipboard.components.length;
+  },
+  paste(at) {
+    if (!clipboard || !clipboard.components.length) return;
+    const st = get();
+    const x0 = Math.min(...clipboard.components.map((c) => c.x));
+    const y0 = Math.min(...clipboard.components.map((c) => c.y));
+    const dx = at ? snapTo(at.x - x0) : 40;
+    const dy = at ? snapTo(at.y - y0) : 40;
+    const map = new Map<string, string>();
+    const groupMap = new Map<string, string>();
+    const comps = clipboard.components.map((c) => {
+      const id = uid(c.type.slice(0, 3));
+      map.set(c.id, id);
+      const group = c.group ? (groupMap.get(c.group) ?? (groupMap.set(c.group, uid('g')), groupMap.get(c.group))) : undefined;
+      return { ...c, id, x: c.x + dx, y: c.y + dy, props: { ...c.props }, locked: false, group };
+    });
+    const wires = clipboard.wires.map((w) => ({ ...w, id: uid('w'), from: { comp: map.get(w.from.comp)!, pin: w.from.pin }, to: { comp: map.get(w.to.comp)!, pin: w.to.pin }, points: w.points?.map((p) => ({ x: p.x + dx, y: p.y + dy })) }));
+    st.edit((d) => ({ ...d, components: [...d.components, ...comps], wires: [...d.wires, ...wires] }));
+    set({ selection: comps.map((c) => c.id), selectedWire: null });
+  },
+  toggleLock(ids) {
+    const sel = new Set(ids ?? get().selection);
+    if (!sel.size) return;
+    const comps = get().doc.components.filter((c) => sel.has(c.id));
+    const lock = !comps.every((c) => c.locked);
+    get().edit((d) => ({ ...d, components: d.components.map((c) => (sel.has(c.id) ? { ...c, locked: lock || undefined } : c)) }));
+  },
+  groupSelected() {
+    const sel = new Set(get().selection);
+    if (sel.size < 2) return;
+    const g = uid('g');
+    get().edit((d) => ({ ...d, components: d.components.map((c) => (sel.has(c.id) ? { ...c, group: g } : c)) }));
+  },
+  ungroupSelected() {
+    const sel = new Set(get().selection);
+    get().edit((d) => ({ ...d, components: d.components.map((c) => (sel.has(c.id) ? { ...c, group: undefined } : c)) }));
+  },
+  setHideLabel(ids, hide) {
+    const sel = new Set(ids);
+    get().edit((d) => ({ ...d, components: d.components.map((c) => (sel.has(c.id) ? { ...c, hideLabel: hide || undefined } : c)) }));
+  },
+  align(kind) {
+    const st = get();
+    const sel = st.doc.components.filter((c) => st.selection.includes(c.id) && hasPart(c.type) && !c.locked);
+    if (sel.length < 2) return;
+    const bs = new Map(sel.map((c) => [c.id, compBounds(c)]));
+    const all = [...bs.values()];
+    const L = Math.min(...all.map((b) => b.x0));
+    const R = Math.max(...all.map((b) => b.x1));
+    const T = Math.min(...all.map((b) => b.y0));
+    const B = Math.max(...all.map((b) => b.y1));
+    const shift = (c: ComponentInstance) => {
+      const b = bs.get(c.id)!;
+      switch (kind) {
+        case 'left':
+          return { dx: L - b.x0, dy: 0 };
+        case 'right':
+          return { dx: R - b.x1, dy: 0 };
+        case 'hcenter':
+          return { dx: (L + R) / 2 - (b.x0 + b.x1) / 2, dy: 0 };
+        case 'top':
+          return { dx: 0, dy: T - b.y0 };
+        case 'bottom':
+          return { dx: 0, dy: B - b.y1 };
+        default:
+          return { dx: 0, dy: (T + B) / 2 - (b.y0 + b.y1) / 2 };
+      }
+    };
+    const moves = new Map(sel.map((c) => [c.id, shift(c)]));
+    st.edit((d) => ({
+      ...d,
+      components: d.components.map((c) => {
+        const m = moves.get(c.id);
+        return m ? { ...c, x: snapTo(c.x + m.dx), y: snapTo(c.y + m.dy) } : c;
+      }),
+    }));
+  },
+  distribute(axis) {
+    const st = get();
+    const sel = st.doc.components.filter((c) => st.selection.includes(c.id) && hasPart(c.type) && !c.locked);
+    if (sel.length < 3) return;
+    const items = sel.map((c) => ({ c, b: compBounds(c) })).sort((p, q) => (axis === 'h' ? p.b.x0 - q.b.x0 : p.b.y0 - q.b.y0));
+    const size = (b: Rect) => (axis === 'h' ? b.x1 - b.x0 : b.y1 - b.y0);
+    const start = axis === 'h' ? items[0].b.x0 : items[0].b.y0;
+    const end = axis === 'h' ? items[items.length - 1].b.x1 : items[items.length - 1].b.y1;
+    const total = items.reduce((s0, it) => s0 + size(it.b), 0);
+    const gapLen = (end - start - total) / (items.length - 1);
+    let cur = start;
+    const target = new Map<string, number>();
+    for (const it of items) {
+      target.set(it.c.id, cur - (axis === 'h' ? it.b.x0 : it.b.y0));
+      cur += size(it.b) + gapLen;
+    }
+    st.edit((d) => ({
+      ...d,
+      components: d.components.map((c) => {
+        const delta = target.get(c.id);
+        if (delta === undefined) return c;
+        return axis === 'h' ? { ...c, x: snapTo(c.x + delta) } : { ...c, y: snapTo(c.y + delta) };
+      }),
+    }));
+  },
+  addBend(id, p) {
+    const d = get().doc;
+    const w = d.wires.find((x) => x.id === id);
+    if (!w) return;
+    const a = pinPosition(d, w.from);
+    const b = pinPosition(d, w.to);
+    if (!a || !b) return;
+    const route = w.route === 'straight' ? 'manual' : w.route ?? 'manual';
+    get().updateWire(id, { points: insertBend(a, w.points, b, route, p), route });
+  },
+  removeBendAt(id, p, index) {
+    const w = get().doc.wires.find((x) => x.id === id);
+    if (!w || !w.points?.length) return;
+    const pts = removeBend(w.points, p, index);
+    get().updateWire(id, { points: pts.length ? pts : undefined });
+  },
+  setWireRoute(id, route) {
+    get().updateWire(id, route === 'straight' ? { route, points: undefined } : { route });
+  },
+  autoRouteWire(id) {
+    const d = get().doc;
+    const w = d.wires.find((x) => x.id === id);
+    if (!w) return false;
+    const a = pinPosition(d, w.from);
+    const b = pinPosition(d, w.to);
+    if (!a || !b) return false;
+    const obstacles: Rect[] = [];
+    const own: Rect[] = [];
+    for (const c of d.components) {
+      if (!hasPart(c.type) || c.type === 'breadboard') continue;
+      (c.id === w.from.comp || c.id === w.to.comp ? own : obstacles).push(compBounds(c));
+    }
+    const pts = autoRoute(a, b, obstacles, own);
+    get().updateWire(id, { points: pts.length ? pts : undefined, route: 'orthogonal' });
+    return true;
+  },
+  setHighlightNet(p) {
+    set({ highlightNet: p });
+  },
+  setMode(m) {
+    writePref('rpi5sim.mode', m);
+    set({ mode: m });
   },
 }));
 

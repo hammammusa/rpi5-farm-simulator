@@ -45,6 +45,8 @@ export interface PostCtx extends Omit<StampCtx, 'R' | 'V' | 'D' | 'SW' | 'I'> {
 export interface PartManifest {
   type: string;
   name: string;
+  /** short name shown on the workspace when "Show component names" is on */
+  short?: string;
   category: Category;
   description: string;
   w: number;

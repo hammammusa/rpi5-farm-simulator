@@ -4,7 +4,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { ProjectDoc } from '../engine/types';
 import { defaultFarmConfig } from '../engine/farm';
 import { emptyNextionProject } from '../engine/devices/nextion';
-import { uid } from '../engine/project';
+import { CURRENT_SCHEMA, defaultView, uid } from '../engine/project';
 import { wiringTable } from './wiring';
 
 export interface ProjectMeta {
@@ -59,16 +59,27 @@ export async function lastProjectId(): Promise<string | null> {
   }
 }
 
-/** Fill fields added in later versions so old saved projects keep opening. */
+/**
+ * Upgrade a saved project of any earlier format to the current schema.
+ * Schema 1 → 2: wires get explicit route/width (drawn exactly as before), parts
+ * keep their positions/rotations, and the project gets default view settings.
+ */
 export function migrate(d: any): ProjectDoc {
+  const view = { ...defaultView(), ...(d.view ?? {}) };
   return {
-    schema: 1,
+    schema: CURRENT_SCHEMA,
     id: d.id ?? uid('p'),
     name: d.name ?? 'Imported project',
     createdAt: d.createdAt ?? Date.now(),
     updatedAt: d.updatedAt ?? Date.now(),
-    components: d.components ?? [],
-    wires: d.wires ?? [],
+    components: (d.components ?? []).map((c: any) => ([0, 90, 180, 270].includes(c.rotation) && c.props ? c : { ...c, rotation: [0, 90, 180, 270].includes(c.rotation) ? c.rotation : 0, props: c.props ?? {} })),
+    // wires keep their exact geometry: a missing `route` means 'manual' (drawn as before)
+    wires: (d.wires ?? []).map((w: any) => {
+      const out = { ...w };
+      if (typeof out.color !== 'string' || !out.color) out.color = '#2b7bd6';
+      if (out.points !== undefined && !(Array.isArray(out.points) && out.points.every((p: any) => Number.isFinite(p?.x) && Number.isFinite(p?.y)))) delete out.points;
+      return out;
+    }),
     files: d.files?.length ? d.files : [{ name: 'main.py', content: '' }],
     mainFile: d.mainFile ?? d.files?.[0]?.name ?? 'main.py',
     nextion: d.nextion ?? emptyNextionProject(),
@@ -76,16 +87,18 @@ export function migrate(d: any): ProjectDoc {
     sim: d.sim ?? { speed: 1 },
     exampleId: d.exampleId,
     notes: d.notes,
+    description: d.description,
+    view,
   };
 }
 
 export function exportJson(doc: ProjectDoc): Blob {
-  return new Blob([JSON.stringify({ format: 'rpi5-farm-simulator', version: 1, project: doc }, null, 2)], { type: 'application/json' });
+  return new Blob([JSON.stringify({ format: 'rpi5-farm-simulator', version: CURRENT_SCHEMA, project: doc }, null, 2)], { type: 'application/json' });
 }
 
 export function exportZip(doc: ProjectDoc): Blob {
   const files: Record<string, Uint8Array> = {
-    'project.json': strToU8(JSON.stringify({ format: 'rpi5-farm-simulator', version: 1, project: doc }, null, 2)),
+    'project.json': strToU8(JSON.stringify({ format: 'rpi5-farm-simulator', version: CURRENT_SCHEMA, project: doc }, null, 2)),
     'wiring.md': strToU8(wiringTable(doc)),
     'nextion.json': strToU8(JSON.stringify(doc.nextion, null, 2)),
     'README.md': strToU8(

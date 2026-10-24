@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useApp } from '../state/store';
 import { runProgram, saveNow, startLoop, startRuntime, stopProgram, restoreLast } from '../state/engine';
 import { useT } from '../i18n';
@@ -17,14 +17,69 @@ const LearnTab = lazy(() => import('./learn/LearnTab'));
 const CompetitionTab = lazy(() => import('./learn/CompetitionTab'));
 const ProjectsTab = lazy(() => import('./ProjectsTab'));
 
-function CircuitTab() {
+function readWidth(key: string) {
+  try {
+    const v = Number(localStorage.getItem(key));
+    return v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Drag handle that resizes the panel on one side (widths persist per browser). */
+function Splitter({ side, onResize }: { side: 'lib' | 'insp'; onResize(px: number): void }) {
+  const [active, setActive] = useState(false);
   return (
-    <div className="circuit-tab">
+    <div
+      className={`splitter ${active ? 'active' : ''}`}
+      role="separator"
+      aria-orientation="vertical"
+      data-testid={`splitter-${side}`}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        (e.target as Element).setPointerCapture(e.pointerId);
+        setActive(true);
+        const el = (e.target as HTMLElement).parentElement!;
+        const rtl = document.documentElement.dir === 'rtl';
+        const move = (ev: PointerEvent) => {
+          const r = el.getBoundingClientRect();
+          const fromLeft = ev.clientX - r.left;
+          const fromRight = r.right - ev.clientX;
+          const px = side === 'lib' ? (rtl ? fromRight : fromLeft) : rtl ? fromLeft : fromRight;
+          onResize(Math.max(160, Math.min(560, px)));
+        };
+        const up = () => {
+          setActive(false);
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+      }}
+    />
+  );
+}
+
+function CircuitTab() {
+  const [lib, setLib] = useState<number | null>(() => readWidth('rpi5sim.libW'));
+  const [insp, setInsp] = useState<number | null>(() => readWidth('rpi5sim.inspW'));
+  const save = (k: string, v: number) => {
+    try {
+      localStorage.setItem(k, String(Math.round(v)));
+    } catch {
+      /* private mode */
+    }
+  };
+  const style = { ...(lib ? { '--lib-w': `${lib}px` } : {}), ...(insp ? { '--insp-w': `${insp}px` } : {}) } as React.CSSProperties;
+  return (
+    <div className="circuit-tab" style={style}>
       <Library />
+      <Splitter side="lib" onResize={(v) => (setLib(v), save('rpi5sim.libW', v))} />
       <div className="center">
         <Workspace />
         <Dock />
       </div>
+      <Splitter side="insp" onResize={(v) => (setInsp(v), save('rpi5sim.inspW', v))} />
       <Inspector />
     </div>
   );

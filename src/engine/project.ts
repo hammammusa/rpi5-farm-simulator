@@ -1,6 +1,6 @@
 import { defaultFarmConfig } from './farm';
 import { emptyNextionProject } from './devices/nextion';
-import type { ComponentInstance, ProjectDoc, Rotation, Wire } from './types';
+import type { ComponentInstance, ProjectDoc, Rotation, ViewSettings, Wire } from './types';
 
 let counter = 0;
 export function uid(prefix = 'c') {
@@ -23,7 +23,7 @@ while True:
 export function newProject(name = 'Untitled project'): ProjectDoc {
   const now = Date.now();
   return {
-    schema: 1,
+    schema: 2,
     id: uid('p'),
     name,
     createdAt: now,
@@ -35,6 +35,27 @@ export function newProject(name = 'Untitled project'): ProjectDoc {
     nextion: emptyNextionProject(),
     farm: { ...defaultFarmConfig(), enabled: false },
     sim: { speed: 1 },
+    view: defaultView(),
+  };
+}
+
+export const CURRENT_SCHEMA = 2 as const;
+
+export function defaultView(): ViewSettings {
+  return {
+    background: '',
+    gridSize: 10,
+    showGrid: true,
+    snap: true,
+    showGpioNumbers: false,
+    showNames: true,
+    showWireLabels: true,
+    showNetNames: false,
+    showVoltages: false,
+    showCrossings: true,
+    wireWidth: 3,
+    pinShape: 'square',
+    minimap: true,
   };
 }
 
@@ -67,5 +88,8 @@ export const WIRE_COLORS = {
   orange: '#ef7d22',
   purple: '#8e5bd6',
   white: '#e8e8e8',
+  brown: '#8b5a2b',
   gray: '#8a8a8a',
 };
+
+export const WIRE_WIDTHS = [1.5, 2, 3, 4, 5];
