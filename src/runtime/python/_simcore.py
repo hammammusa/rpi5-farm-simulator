@@ -512,11 +512,97 @@ def _patch_signal():
     signal.pause = pause
 
 
+# ------------------------------------------------------------------ driver registry / import hook
+# Built-in simulation drivers (modules under /lib/sim). Importing one is announced to the
+# simulator (Logs / protocol monitor); importing anything unavailable gets an explanation.
+DRIVERS = {}  # top-level module name -> description, filled by install()
+
+NOT_AVAILABLE = {
+    'pigpio': 'pigpio does not support the Raspberry Pi 5 (its GPIO is on the RP1 chip). Use gpiozero or lgpio.',
+    'wiringpi': 'WiringPi does not support the Raspberry Pi 5. Use gpiozero or lgpio.',
+    'Adafruit_GPIO': 'Adafruit_GPIO is deprecated. Use board/busio/digitalio (Blinka) or gpiozero.',
+    'adafruit_blinka': 'Import board, busio and digitalio directly (they are built in).',
+    'picamera': 'Cameras are not simulated.',
+    'picamera2': 'Cameras are not simulated.',
+    'cv2': 'OpenCV / cameras are not available in the simulator.',
+    'numpy': 'numpy is not loaded in this simulator (no package download). Use plain Python lists and math.',
+    'pandas': 'pandas is not available in the simulator.',
+    'requests': 'The simulated Pi has no internet access. Use the built-in Flask web server for local web pages.',
+    'paho': 'MQTT/networking is not simulated (no internet access).',
+    'pymodbus': 'pymodbus is not built in — use minimalmodbus (built in) for Modbus RTU sensors.',
+    'smbus3': 'Use smbus2 (built in).',
+    'Adafruit_ADS1x15': 'This legacy library is replaced by adafruit_ads1x15 (built in).',
+    'Adafruit_BME280': 'Use adafruit_bme280 or bme280 (built in).',
+    'luma': 'luma.oled/luma.lcd are not built in — use ssd1306 / st7735 (simulator drivers).',
+}
+
+
+def _announce(top):
+    if top in DRIVERS and top not in _announced:
+        _announced.add(top)
+        try:
+            _simjs.post('driver.loaded', json.dumps({'module': top, 'kind': 'built-in simulation driver'}))
+        except Exception:
+            pass
+
+
+_announced = set()
+
+
+_orig_import = builtins.__import__
+
+
+def _import(name, globals=None, locals=None, fromlist=(), level=0):
+    """Announce built-in drivers imported by the user's program (every run)."""
+    if level == 0 and globals and str(globals.get('__file__') or '').startswith(PROJECT):
+        _announce(name.split('.')[0])
+    return _orig_import(name, globals, locals, fromlist, level)
+
+
+class _MissingFinder:
+    """Last on sys.meta_path: reached only when no finder can load the module."""
+
+    @classmethod
+    def find_spec(cls, name, path=None, target=None):
+        if path is not None:
+            return None
+        top = name.split('.')[0]
+        caller = sys._getframe(1)
+        while caller is not None and (caller.f_code.co_filename.startswith('<frozen') or caller.f_code.co_filename == __file__):
+            caller = caller.f_back
+        # only explain imports written in the user's project (library try/except imports stay quiet)
+        if caller is None or not caller.f_code.co_filename.startswith(PROJECT):
+            return None
+        why = NOT_AVAILABLE.get(top, 'The simulator cannot install packages (there is no pip or internet).')
+        supported = ', '.join(sorted(DRIVERS))
+        raise ModuleNotFoundError(
+            "No module named '%s'. %s Built-in hardware libraries: %s. See Examples → Libraries for the supported classes and functions." % (top, why, supported),
+            name=top,
+        )
+
+
+def _scan_drivers():
+    root = '/lib/sim'
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return
+    for n in names:
+        if n.startswith('_') or n == '__pycache__':
+            continue
+        mod = n[:-3] if n.endswith('.py') else n
+        if n.endswith('.py') or os.path.isdir(os.path.join(root, n)):
+            DRIVERS[mod] = True
+
+
 def install():
     _patch_time()
     _patch_threading()
     _patch_fs()
     _patch_signal()
+    _scan_drivers()
+    builtins.__import__ = _import
+    sys.meta_path.append(_MissingFinder)
 
 
 # ------------------------------------------------------------------ program runner
@@ -540,9 +626,10 @@ def _reset_state():
         f = getattr(mod, '__file__', None) or ''
         if f.startswith(PROJECT):
             del sys.modules[name]
-    for name in ('gpiozero', 'RPi.GPIO', 'serial', 'flask', 'smbus2', 'spidev', 'adafruit_dht', 'schedule'):
-        m = sys.modules.get(name)
-        if m is not None and hasattr(m, '_sim_reset'):
+    _announced.clear()
+    for name, m in list(sys.modules.items()):
+        f = getattr(m, '__file__', None) or ''
+        if f.startswith('/lib/sim/') and hasattr(m, '_sim_reset'):
             try:
                 m._sim_reset()
             except Exception:
@@ -550,9 +637,9 @@ def _reset_state():
 
 
 def _shutdown_devices():
-    for name in ('gpiozero', 'RPi.GPIO', 'serial'):
-        m = sys.modules.get(name)
-        if m is not None and hasattr(m, '_sim_shutdown'):
+    for name, m in list(sys.modules.items()):
+        f = getattr(m, '__file__', None) or ''
+        if f.startswith('/lib/sim/') and hasattr(m, '_sim_shutdown'):
             try:
                 m._sim_shutdown()
             except BaseException:

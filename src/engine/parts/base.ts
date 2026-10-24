@@ -1,6 +1,35 @@
 import type { Circuit, Solution } from '../solver';
 import type { Category, ComponentInstance, FaultDef, GpioRuntime, PinDef, PropDef, Severity } from '../types';
 import type { FarmState } from '../farm';
+import type { DeviceHost, DeviceModel } from '../devices/device';
+
+/**
+ * How faithfully a part is simulated (shown in the library and inspector):
+ *  - full:         the documented functions are modelled and covered by automated tests
+ *  - functional:   documented behavioural model, simplified physics (e.g. a linear calibration)
+ *  - experimental: partial support that still needs work
+ *  - visual:       drawing/documentation only — not driven by the simulation or by code
+ */
+export type Fidelity = 'full' | 'functional' | 'experimental' | 'visual';
+
+/** Library group (the component browser is organised by these). */
+export type LibraryGroup =
+  | 'Boards'
+  | 'Breadboard & wiring'
+  | 'Passive components'
+  | 'Inputs & switches'
+  | 'LEDs & indicators'
+  | 'Semiconductors'
+  | 'Power'
+  | 'Environmental sensors'
+  | 'Agriculture & water sensors'
+  | 'ADC & I/O expanders'
+  | 'Logic & memory ICs'
+  | 'Motors & drivers'
+  | 'Actuators & relays'
+  | 'Displays'
+  | 'Communication'
+  | 'Smart Farming Components';
 
 /** What a part can ask the simulator while stamping/post-processing. */
 export interface SimView {
@@ -76,6 +105,26 @@ export interface PartManifest {
   /** part can be inserted into breadboard holes */
   insertable?: boolean;
   hidden?: boolean;
+  /** simulation fidelity; defaults are assigned in catalog/registry.ts */
+  fidelity?: Fidelity;
+  /** library group; defaults are derived from `category` in catalog/registry.ts */
+  group?: LibraryGroup;
+  /** e.g. 'Sensirion', 'Bosch', 'Texas Instruments' (only when the part defines one) */
+  manufacturer?: string;
+  /** model / part reference used in the BOM (only real, well-known references) */
+  model?: string;
+  /** driver-registry ids (Python modules) that can talk to this part */
+  drivers?: string[];
+  /** bus membership: the simulator routes I2C / UART / SPI traffic to the part's device model */
+  bus?: 'i2c' | 'uart' | 'spi';
+  /** protocol/register model of the part (created on demand by the simulator) */
+  device?(host: DeviceHost): DeviceModel;
+  /** square-wave output (flow meters, fan tachometers): pin name and frequency in Hz */
+  pulse?: { pin: string; hz(value: (key: string) => number, vis: Record<string, any> | undefined): number };
+  /** common wiring mistakes / errors shown in the inspector and docs */
+  commonErrors?: string[];
+  /** things to check when assembling the real circuit (export checklist) */
+  assembly?: string[];
 }
 
 export const pin = (id: string, label: string, x: number, y: number, kind: PinDef['kind'], desc?: string): PinDef => ({

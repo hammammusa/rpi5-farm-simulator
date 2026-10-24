@@ -4,6 +4,7 @@ import { memo, useMemo } from 'react';
 import type { ComponentInstance } from '../../engine/types';
 import type { PartManifest } from '../../engine/parts';
 import { NextionScreen } from '../nextion/NextionScreen';
+import { extraBody } from './ExtraParts';
 
 export interface PartProps {
   comp: ComponentInstance;
@@ -224,9 +225,20 @@ function Resistor({ props }: { props: any }) {
   );
 }
 
+/** new parts that share the drawing of an existing one */
+const DRAW_ALIAS: Record<string, string> = {
+  dht11: 'dht22',
+  am2302: 'dht22',
+  sg90: 'servo',
+  mg996r: 'servo',
+  overflow_switch: 'float_switch',
+  irrigation_valve: 'solenoid_valve',
+  exhaust_fan: 'fan',
+};
+
 function body(p: PartProps) {
   const { comp, props, v, dev } = p;
-  switch (comp.type) {
+  switch (DRAW_ALIAS[p.comp.type] ?? p.comp.type) {
     case 'rpi5':
       return <Pi5 />;
     case 'breadboard':
@@ -622,7 +634,7 @@ function body(p: PartProps) {
         </g>
       );
     default:
-      return <rect width={p.m.w} height={p.m.h} fill="#888" />;
+      return extraBody(p) ?? <rect width={p.m.w} height={p.m.h} fill="#888" />;
   }
 }
 

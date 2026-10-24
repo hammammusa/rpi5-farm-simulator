@@ -6,7 +6,8 @@ import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightSty
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { autocompletion, closeBrackets, type CompletionContext } from '@codemirror/autocomplete';
+import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
+import { piCompletions, piHover } from './pyComplete';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 
 const setErrorLine = StateEffect.define<number | null>();
@@ -23,22 +24,6 @@ const errorField = StateField.define<DecorationSet>({
   },
   provide: (f) => EditorView.decorations.from(f),
 });
-
-const PI_WORDS = [
-  'gpiozero', 'LED', 'PWMLED', 'RGBLED', 'Button', 'Buzzer', 'OutputDevice', 'DigitalOutputDevice', 'DigitalInputDevice', 'PWMOutputDevice',
-  'Motor', 'Servo', 'AngularServo', 'MCP3008', 'CPUTemperature', 'when_pressed', 'when_released', 'when_held', 'is_pressed', 'is_lit',
-  'blink', 'pulse', 'toggle', 'value', 'active_high', 'initial_value', 'pull_up', 'bounce_time', 'wait_for_press', 'serial', 'Serial',
-  'readline', 'read_until', 'in_waiting', 'reset_input_buffer', 'smbus2', 'SMBus', 'read_byte_data', 'write_byte_data',
-  'read_i2c_block_data', 'write_i2c_block_data', 'spidev', 'SpiDev', 'xfer2', 'adafruit_dht', 'DHT22', 'board', 'temperature', 'humidity',
-  'W1ThermSensor', 'get_temperature', 'sleep', 'time', 'datetime', 'pause', 'schedule', 'every', 'run_pending', 'Flask', 'jsonify',
-  'render_template', 'request', 'route',
-];
-
-function piCompletions(ctx: CompletionContext) {
-  const w = ctx.matchBefore(/\w+/);
-  if (!w || (w.from === w.to && !ctx.explicit)) return null;
-  return { from: w.from, options: PI_WORDS.map((label) => ({ label, type: /^[A-Z]/.test(label) ? 'class' : 'function' })) };
-}
 
 export interface EditorProps {
   value: string;
@@ -73,7 +58,8 @@ export function CodeEditor({ value, onChange, filename, dark, errorLine, readOnl
         closeBrackets(),
         highlightActiveLine(),
         highlightSelectionMatches(),
-        autocompletion({ override: [piCompletions] }),
+        autocompletion({ override: [piCompletions], activateOnTyping: true }),
+        piHover,
         indentUnit.of('    '),
         EditorState.tabSize.of(4),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),

@@ -51,8 +51,23 @@ export class SimError extends Error {
 }
 
 const UART_CANON: Record<string, string> = { '/dev/serial0': 'UART0', '/dev/ttyAMA0': 'UART0', '/dev/ttyAMA1': 'UART1', '/dev/ttyAMA2': 'UART2', '/dev/ttyAMA3': 'UART3', '/dev/ttyAMA4': 'UART4' };
-const I2C_TYPES = new Set(['bme280', 'bh1750', 'lcd1602_i2c', 'oled_ssd1306']);
-const UART_TYPES = new Set(['nextion', 'mhz19b', 'usb_serial']);
+const I2C_LEGACY = new Set(['bme280', 'bh1750', 'lcd1602_i2c', 'oled_ssd1306']);
+const UART_LEGACY = new Set(['nextion', 'mhz19b', 'usb_serial']);
+const isI2C = (type: string) => I2C_LEGACY.has(type) || (hasPart(type) && getPart(type).bus === 'i2c');
+const isUART = (type: string) => UART_LEGACY.has(type) || (hasPart(type) && getPart(type).bus === 'uart');
+const isSPI = (type: string) => type === 'mcp3008' || (hasPart(type) && getPart(type).bus === 'spi');
+/** DHT-family single-wire sensors and their protocol variant */
+export const DHT_TYPES: Record<string, 'DHT11' | 'DHT22'> = { dht22: 'DHT22', am2302: 'DHT22', dht11: 'DHT11' };
+
+export interface BusLogEntry {
+  t: number;
+  bus: 'I2C1' | 'SPI0';
+  addr: string;
+  dir: 'w' | 'r' | 'x';
+  bytes: number[];
+  peer: string;
+  note?: string;
+}
 
 function freshGpio(bcm: number): GpioRuntime {
   return { bcm, mode: 'input', value: 0, pull: defaultPull(bcm), pwmFreq: 0, pwmDuty: 0, pattern: null };
@@ -92,6 +107,9 @@ export class Simulator {
   events: PyEvent[] = [];
   watchers = new Map<number, { last: 0 | 1 | null; bounceMs: number; lastEdgeT: number; pulse: boolean }>();
   uartLog: UartLogEntry[] = [];
+  busLog: BusLogEntry[] = [];
+  /** live sensor readings returned to Python (protocol / sensor monitor) */
+  readLog: { t: number; comp: string; what: string; value: string }[] = [];
   logs: SimLog[] = [];
   running = false;
   piPowered = true;
@@ -205,7 +223,11 @@ export class Simulator {
   // ------------------------------------------------------------ solving
   private timeVarying(): boolean {
     for (const g of this.gpio) if (g.mode === 'pwm' && g.pwmDuty > 0 && g.pwmDuty < 1 && this.net.gpioNet.has(g.bcm)) return true;
-    for (const c of this.doc.components) if (c.type === 'flow_sensor' && this.sensorValue(c, 'flow') > 0) return true;
+    for (const c of this.doc.components) {
+      const m = hasPart(c.type) ? getPart(c.type) : null;
+      if (m?.pulse && m.pulse.hz((k) => this.sensorValue(c, k), this.vis.get(c.id)) > 0) return true;
+      if (this.rt.get(c.id)?.echoUntil && this.rt.get(c.id)!.echoUntil > this.clock.now()) return true;
+    }
     return false;
   }
 
@@ -445,7 +467,40 @@ export class Simulator {
       send: (bytes, t) => this.deviceSend(id, bytes, t ?? this.clock.now()),
       log: (m) => this.log(m),
       changed: () => this.notify(),
+      pinVolt: (pin) => {
+        const n = this.pinNet(id, pin);
+        return n < 0 ? null : this.netVoltage(n);
+      },
+      id,
+      vis: () => this.vis.get(id),
+      rt: () => this.rtOf(id),
+      reevaluate: () => this.evaluate(),
+      sameNet: (a, b) => {
+        const na = this.pinNet(id, a);
+        return na >= 0 && na === this.pinNet(id, b);
+      },
+      pinConnected: (pin) => {
+        const n = this.pinNet(id, pin);
+        return n >= 0 && [...this.net.nets[n].comps].some((x) => x !== id);
+      },
+      netPeers: (pin) => {
+        const n = this.pinNet(id, pin);
+        if (n < 0) return [];
+        const out: { id: string; type: string; dev: DeviceModel | null }[] = [];
+        for (const cid of this.net.nets[n].comps) {
+          if (cid === id) continue;
+          const pc = this.comp(cid);
+          if (pc && this.vis.get(cid)?.powered !== false) out.push({ id: cid, type: pc.type, dev: this.device(cid) });
+        }
+        return out;
+      },
     };
+    const man = hasPart(c.type) ? getPart(c.type) : null;
+    if (man?.device) {
+      d = man.device(host);
+      this.devices.set(id, d);
+      return d;
+    }
     switch (c.type) {
       case 'bme280':
         d = new Bme280(host);
@@ -480,7 +535,7 @@ export class Simulator {
 
   private updateDevicePower(t: number) {
     for (const c of this.doc.components) {
-      if (!I2C_TYPES.has(c.type) && !UART_TYPES.has(c.type) && c.type !== 'mcp3008') continue;
+      if (!isI2C(c.type) && !isUART(c.type) && !isSPI(c.type) && !(hasPart(c.type) && getPart(c.type).device)) continue;
       const on = !!this.vis.get(c.id)?.powered;
       const was = this.powerState.get(c.id) ?? false;
       if (on !== was) {
@@ -498,9 +553,16 @@ export class Simulator {
     return this.net.netOf({ comp: compId, pin });
   }
 
+  /** true when one of the part's ground pins (GND, VSS, DGND …) is on the Pi's ground net */
   private sharesGround(compId: string) {
-    const g = this.pinNet(compId, 'GND');
-    return g >= 0 && g === this.net.groundNet;
+    const c = this.comp(compId);
+    if (!c || !hasPart(c.type)) return false;
+    const m = getPart(c.type);
+    const gnds = pinsOf(m, this.propsOf(c)).filter((p) => p.kind === 'ground').map((p) => p.id);
+    return (gnds.length ? gnds : ['GND']).some((p) => {
+      const g = this.pinNet(compId, p);
+      return g >= 0 && g === this.net.groundNet;
+    });
   }
 
   private mcpSample(id: string, sgl: boolean, ch: number) {
@@ -674,11 +736,12 @@ export class Simulator {
   }
 
   private runtimeIssues = new Map<string, Issue>();
-  private issueOnce(code: string, params: Record<string, string | number>) {
+  private issueOnce(code: string, params: Record<string, string | number>, severity: Severity = 'warning', comps?: string[]) {
     const key = `${code}|${JSON.stringify(params)}`;
     if (!this.runtimeIssues.has(key)) {
-      this.runtimeIssues.set(key, { code, severity: 'warning', params, comps: this.net.piId ? [this.net.piId] : [], key });
-      this.log(`${code} ${JSON.stringify(params)}`, 'warn');
+      this.runtimeIssues.set(key, { code, severity, params, comps: comps ?? (this.net.piId ? [this.net.piId] : []), key });
+      this.log(`${code} ${JSON.stringify(params)}`, severity === 'error' ? 'error' : 'warn');
+      this.notify();
     }
   }
   getRuntimeIssues() {
@@ -702,8 +765,16 @@ export class Simulator {
   private pulseSourceFor(b: number): ComponentInstance | null {
     const netId = this.net.gpioNet.get(b);
     if (netId === undefined) return null;
-    for (const c of this.doc.components) if (c.type === 'flow_sensor' && this.pinNet(c.id, 'SIG') === netId) return c;
+    for (const c of this.doc.components) {
+      const m = hasPart(c.type) ? getPart(c.type) : null;
+      if (m?.pulse && this.pinNet(c.id, m.pulse.pin) === netId) return c;
+    }
     return null;
+  }
+
+  private pulseHz(c: ComponentInstance) {
+    const m = getPart(c.type);
+    return m.pulse ? Math.max(0, m.pulse.hz((k) => this.sensorValue(c, k), this.vis.get(c.id))) : 0;
   }
 
   private applyPatterns(t: number): boolean {
@@ -760,7 +831,7 @@ export class Simulator {
       if (!w.pulse) continue;
       const src = this.pulseSourceFor(b);
       if (!src) continue;
-      const hz = 7.5 * Math.max(0, this.sensorValue(src, 'flow'));
+      const hz = this.pulseHz(src);
       if (hz <= 0 || !this.vis.get(src.id)?.powered) continue;
       const k0 = Math.floor(prev * hz);
       const k1 = Math.floor(t * hz);
@@ -824,7 +895,7 @@ export class Simulator {
   }
 
   private uartDevices(): ComponentInstance[] {
-    return this.doc.components.filter((c) => UART_TYPES.has(c.type));
+    return this.doc.components.filter((c) => isUART(c.type));
   }
 
   private pushUartLog(e: UartLogEntry) {
@@ -933,21 +1004,54 @@ export class Simulator {
   }
 
   // ------------------------------------------------------------ I2C
+  /** I2C devices reachable from the Pi's I2C1 bus, including those behind an enabled TCA9548A channel. */
   private i2cDevices() {
     const sda = this.net.gpioNet.get(I2C1.sda);
     const scl = this.net.gpioNet.get(I2C1.scl);
     const out: { c: ComponentInstance; d: DeviceModel }[] = [];
     if (sda === undefined || scl === undefined) return out;
+    const buses: [number, number][] = [[sda, scl]];
+    // multiplexers on the main bus open their enabled channels
     for (const c of this.doc.components) {
-      if (!I2C_TYPES.has(c.type)) continue;
-      if (this.pinNet(c.id, 'SDA') !== sda || this.pinNet(c.id, 'SCL') !== scl) continue;
+      if (c.type !== 'tca9548a') continue;
+      if (this.pinNet(c.id, 'SDA') !== sda || this.pinNet(c.id, 'SCL') !== scl || !this.vis.get(c.id)?.powered || !this.sharesGround(c.id)) continue;
+      const mux = this.device(c.id) as (DeviceModel & { mask(): number }) | null;
+      const mask = mux?.mask() ?? 0;
+      for (let ch = 0; ch < 8; ch++) if (mask & (1 << ch)) buses.push([this.pinNet(c.id, `SD${ch}`), this.pinNet(c.id, `SC${ch}`)]);
+    }
+    for (const c of this.doc.components) {
+      if (!isI2C(c.type) || c.type === 'tca9548a') continue;
+      const dsda = this.pinNet(c.id, 'SDA');
+      const dscl = this.pinNet(c.id, 'SCL');
+      if (dsda < 0 || !buses.some(([a, b]) => a === dsda && b === dscl)) continue;
       if (!this.vis.get(c.id)?.powered) continue;
       if ((this.propsOf(c).fault ?? 'none') === 'disconnected') continue;
       if (!this.sharesGround(c.id)) continue;
       const d = this.device(c.id);
       if (d) out.push({ c, d });
     }
+    // the multiplexer itself answers on the main bus
+    for (const c of this.doc.components) {
+      if (c.type !== 'tca9548a') continue;
+      if (this.pinNet(c.id, 'SDA') !== sda || this.pinNet(c.id, 'SCL') !== scl || !this.vis.get(c.id)?.powered || !this.sharesGround(c.id)) continue;
+      const d = this.device(c.id);
+      if (d) out.push({ c, d });
+    }
     return out;
+  }
+
+  private pushBusLog(e: BusLogEntry) {
+    this.busLog.push(e);
+    if (this.busLog.length > 400) this.busLog.splice(0, this.busLog.length - 400);
+  }
+
+  /** record a value delivered to Python (sensor monitor) */
+  noteRead(comp: string, what: string, value: string) {
+    this.readLog.push({ t: this.clock.now(), comp, what, value });
+    if (this.readLog.length > 300) this.readLog.splice(0, this.readLog.length - 300);
+    const r = this.rtOf(comp);
+    r.lastRead = this.clock.now();
+    r.lastValue = value;
   }
 
   i2cScan(): number[] {
@@ -963,11 +1067,24 @@ export class Simulator {
       if (o && !o.startsWith('i2c')) throw new SimError('OSError', `[Errno 16] Device or resource busy: GPIO${p} is used by ${o}`);
     }
     const devs = this.i2cDevices().filter((x) => x.d.i2cAddress!() === addr);
-    if (devs.length === 0) throw new SimError('OSError', '[Errno 121] Remote I/O error');
-    if (devs.length > 1) throw new SimError('OSError', '[Errno 5] Input/output error (two devices answer at the same address)');
+    const hex = `0x${addr.toString(16).padStart(2, '0')}`;
+    if (devs.length === 0) {
+      this.pushBusLog({ t: this.clock.now(), bus: 'I2C1', addr: hex, dir: write && write.length ? 'w' : 'r', bytes: write ?? [], peer: '—', note: 'NACK: no device at this address' });
+      this.notify();
+      throw new SimError('OSError', '[Errno 121] Remote I/O error');
+    }
+    if (devs.length > 1) {
+      this.pushBusLog({ t: this.clock.now(), bus: 'I2C1', addr: hex, dir: 'w', bytes: write ?? [], peer: devs.map((x) => getPart(x.c.type).name).join(' + '), note: 'address conflict' });
+      throw new SimError('OSError', '[Errno 5] Input/output error (two devices answer at the same address)');
+    }
     const d = devs[0].d;
-    if (write && write.length) d.i2cWrite?.(write);
+    const peer = devs[0].c.label || getPart(devs[0].c.type).name;
+    if (write && write.length) {
+      d.i2cWrite?.(write);
+      this.pushBusLog({ t: this.clock.now(), bus: 'I2C1', addr: hex, dir: 'w', bytes: [...write], peer });
+    }
     const out = readN > 0 ? d.i2cRead?.(readN) ?? new Array(readN).fill(0xff) : [];
+    if (readN > 0) this.pushBusLog({ t: this.clock.now(), bus: 'I2C1', addr: hex, dir: 'r', bytes: [...out], peer });
     this.notify();
     return out;
   }
@@ -993,17 +1110,23 @@ export class Simulator {
     this.requirePi();
     const g = this.net.gpioNet;
     for (const c of this.doc.components) {
-      if (c.type !== 'mcp3008') continue;
+      if (!isSPI(c.type)) continue;
+      const m = getPart(c.type);
+      const pn = (m as any).spiPins ?? { sck: 'CLK', mosi: 'DIN', miso: 'DOUT', cs: 'CS', gnd: 'DGND' };
       const ok =
-        this.pinNet(c.id, 'CLK') === g.get(SPI0.sclk) &&
-        this.pinNet(c.id, 'DIN') === g.get(SPI0.mosi) &&
-        this.pinNet(c.id, 'DOUT') === g.get(SPI0.miso) &&
-        this.pinNet(c.id, 'CS') === g.get(SPI0.ce[dev]) &&
-        this.pinNet(c.id, 'DGND') === this.net.groundNet;
+        this.pinNet(c.id, pn.sck) === g.get(SPI0.sclk) &&
+        this.pinNet(c.id, pn.mosi) === g.get(SPI0.mosi) &&
+        (!pn.miso || this.pinNet(c.id, pn.miso) === g.get(SPI0.miso)) &&
+        this.pinNet(c.id, pn.cs) === g.get(SPI0.ce[dev]) &&
+        this.pinNet(c.id, pn.gnd) === this.net.groundNet;
       if (!ok || !this.vis.get(c.id)?.powered) continue;
-      return this.device(c.id)!.spiXfer!(bytes);
+      const out = this.device(c.id)!.spiXfer!(bytes);
+      this.pushBusLog({ t: this.clock.now(), bus: 'SPI0', addr: `CE${dev}`, dir: 'x', bytes: [...bytes], peer: c.label || m.name, note: `MISO ${out.map((b) => b.toString(16).padStart(2, '0')).join(' ')}` });
+      this.notify();
+      return out;
     }
     this.issueOnce('W_SPI_NO_DEVICE', { dev });
+    this.pushBusLog({ t: this.clock.now(), bus: 'SPI0', addr: `CE${dev}`, dir: 'x', bytes: [...bytes], peer: '—', note: 'no device answers on this chip-select' });
     return bytes.map(() => 0);
   }
 
@@ -1012,19 +1135,57 @@ export class Simulator {
     return hasPullupResistor(this, netId, maxOhms);
   }
 
-  dhtRead(b: number): { temperature: number; humidity: number } | { error: 'not_found' | 'timeout' } {
+  dhtRead(b: number, want?: 'DHT11' | 'DHT22'): { temperature: number; humidity: number } | { error: 'not_found' | 'timeout'; hint?: string } {
     this.requirePi();
     const netId = this.net.gpioNet.get(b);
     for (const c of this.doc.components) {
-      if (c.type !== 'dht22' || netId === undefined || this.pinNet(c.id, 'DATA') !== netId) continue;
+      if (!DHT_TYPES[c.type] || netId === undefined || this.pinNet(c.id, 'DATA') !== netId) continue;
       const fault = this.propsOf(c).fault ?? 'none';
-      if (!this.vis.get(c.id)?.powered || fault === 'disconnected' || !this.sharesGround(c.id)) return { error: 'not_found' };
-      if (!this.pulledUp(netId, 20000)) return { error: 'not_found' };
+      const name = c.label || getPart(c.type).name;
+      if (!this.vis.get(c.id)?.powered) return { error: 'not_found', hint: `${name} on GPIO${b} has no power (check VCC/GND)` };
+      if (fault === 'disconnected') return { error: 'not_found' };
+      if (!this.sharesGround(c.id)) return { error: 'not_found', hint: `${name} has no common GND with the Pi` };
+      if (!this.pulledUp(netId, 20000)) return { error: 'not_found', hint: `no pull-up resistor on the DATA line of ${name}` };
       if (fault === 'timeout' && Math.random() < 0.6) return { error: 'timeout' };
-      if (fault === 'invalid') return { temperature: -40, humidity: 0 };
-      return { temperature: Math.round(this.sensorValue(c, 'temperature') * 10) / 10, humidity: Math.round(this.sensorValue(c, 'humidity') * 10) / 10 };
+      if (fault === 'invalid') return { temperature: -40, humidity: 0, kind: DHT_TYPES[c.type], comp: c.id } as any;
+      const kind = DHT_TYPES[c.type];
+      let T = this.sensorValue(c, 'temperature');
+      let H = this.sensorValue(c, 'humidity');
+      // the DHT11 reports whole numbers and is limited to 0–50 °C / 20–90 %RH
+      if (kind === 'DHT11') {
+        T = Math.round(Math.max(0, Math.min(50, T)));
+        H = Math.round(Math.max(20, Math.min(90, H)));
+      } else {
+        T = Math.round(T * 10) / 10;
+        H = Math.round(H * 10) / 10;
+      }
+      // wrong driver class: the 40 data bits are decoded with the other sensor's format
+      if (want && want !== kind) {
+        this.issueOnce('W_DHT_TYPE_MISMATCH', { want, kind, pin: b }, 'warning', [c.id]);
+        if (want === 'DHT11') {
+          const h10 = Math.round(H * 10);
+          const t10 = Math.round(T * 10);
+          H = h10 >> 8;
+          T = t10 >> 8;
+        } else {
+          H = (H * 256) / 10;
+          T = (T * 256) / 10;
+        }
+      }
+      this.noteRead(c.id, kind, `${T} °C, ${H} %RH`);
+      return { temperature: T, humidity: H, kind, comp: c.id } as any;
     }
-    return { error: 'not_found' };
+    // nothing on this pin: tell the user where the DHT sensor really is
+    const others = this.doc.components.filter((c) => DHT_TYPES[c.type]);
+    const hints = others
+      .map((c) => {
+        const n = this.pinNet(c.id, 'DATA');
+        const g = [...this.net.gpioNet].find(([, nn]) => nn === n)?.[0];
+        return g !== undefined ? `${c.label || getPart(c.type).name} DATA is wired to GPIO${g} (pin ${BCM_TO_PHYS[g]}), but the code reads GPIO${b}` : `${c.label || getPart(c.type).name} DATA is not wired to any GPIO`;
+      })
+      .slice(0, 2);
+    if (others.length) this.issueOnce('W_CODE_PIN_MISMATCH', { pin: b, hint: hints.join('; ') }, 'warning', others.map((c) => c.id));
+    return { error: 'not_found', hint: hints.join('; ') || 'no DHT sensor in the circuit' };
   }
 
   w1Id(compId: string) {
@@ -1057,7 +1218,60 @@ export class Simulator {
     const hi = ((raw >> 8) & 0xff).toString(16).padStart(2, '0');
     const bytes = `${lo} ${hi} 4b 46 7f ff 0c 10 1c`;
     const bad = fault === 'invalid' || (fault === 'timeout' && Math.random() < 0.5);
+    this.noteRead(c.id, 'DS18B20', bad ? 'CRC error' : `${(milli / 1000).toFixed(3)} °C`);
     return `${bytes} : crc=1c ${bad ? 'NO' : 'YES'}\n${bytes} t=${bad ? -62 : Math.round(milli)}\n`;
+  }
+
+  // ------------------------------------------------------------ HC-SR04 ultrasonic ranging
+  /**
+   * Emit a 10 µs trigger pulse on `trig` (in simulation time) and measure the echo pulse that
+   * reaches GPIO `echo` through the real circuit (direct wire, divider ...). Returns the
+   * round-trip pulse width in seconds, or null when no echo arrives (wiring/timeout).
+   */
+  ultrasonicPing(trig: number, echo: number, t = this.clock.now()): { width: number | null; cm: number | null; reason?: string } {
+    this.requirePi();
+    const g = this.gpio[trig];
+    if (g.mode !== 'output') throw new SimError('RuntimeError', `GPIO${trig} (trigger) is not configured as an output`);
+    this.gpioWrite(trig, 1, t);
+    this.gpioWrite(trig, 0, t + 1e-5);
+    const src = this.doc.components.find((c) => c.type === 'hcsr04' && Math.abs((this.rt.get(c.id)?.echoFrom ?? -1) - (t + 1e-5 + 0.0005)) < 1e-6);
+    if (!src) return { width: null, cm: null, reason: 'no sensor answered on this trigger pin (check TRIG wiring and 5 V power)' };
+    const r = this.rtOf(src.id);
+    const mid = (r.echoFrom + r.echoUntil) / 2;
+    const during = this.readLevel(echo, mid);
+    const after = this.readLevel(echo, r.echoUntil + 1e-4);
+    if (during.value !== 1 || during.floating || after.value !== 0) return { width: null, cm: null, reason: 'the echo pulse does not reach this GPIO (check ECHO wiring / divider)' };
+    if ((during.v ?? 0) > 3.6) this.issueOnce('E_GPIO_OVERVOLTAGE', { pin: echo, phys: BCM_TO_PHYS[echo], v: (during.v ?? 0).toFixed(1) }, 'error', [src.id, ...(this.net.piId ? [this.net.piId] : [])]);
+    const width = r.echoUntil - r.echoFrom;
+    const cm = width >= 0.037 ? null : (width * 34300) / 2;
+    this.noteRead(src.id, 'distance', cm === null ? 'out of range' : `${cm.toFixed(1)} cm`);
+    return { width, cm };
+  }
+
+  // ------------------------------------------------------------ WS2812 / NeoPixel
+  /** Deliver one frame of [r, g, b] pixels from GPIO `bcm` along the DIN → DOUT chain of strips. */
+  ws2812Show(bcm: number, pixels: number[][]): number {
+    this.requirePi();
+    let din = this.net.gpioNet.get(bcm);
+    if (din === undefined) return 0;
+    let rest = pixels.slice();
+    let delivered = 0;
+    const seen = new Set<string>();
+    while (rest.length) {
+      const strip = this.doc.components.find((c) => c.type === 'ws2812_strip' && !seen.has(c.id) && this.pinNet(c.id, 'DIN') === din);
+      if (!strip) break;
+      seen.add(strip.id);
+      if (!this.vis.get(strip.id)?.powered || !this.sharesGround(strip.id)) break;
+      const n = Number(this.propsOf(strip).count) || 8;
+      const dead = (this.propsOf(strip).fault ?? 'none') === 'dead_pixel';
+      this.rtOf(strip.id).pixels = dead ? [] : rest.slice(0, n);
+      if (dead) break;
+      delivered += Math.min(n, rest.length);
+      rest = rest.slice(n);
+      din = this.pinNet(strip.id, 'DOUT');
+    }
+    this.evaluate();
+    return delivered;
   }
 
   cpuTemp() {

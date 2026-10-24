@@ -34,10 +34,11 @@ class DHTBase:
         if t - self._last < self._min_interval and self._temperature is not None:
             return
         self._last = t
-        r = _call('dht.read', pin=self._bcm)
+        r = _call('dht.read', pin=self._bcm, kind=self._kind)
         err = r.get('error')
         if err == 'not_found':
-            raise RuntimeError('DHT sensor not found, check wiring')
+            hint = r.get('hint')
+            raise RuntimeError('DHT sensor not found, check wiring' + (' (simulator: %s)' % hint if hint else ''))
         if err == 'timeout':
             raise RuntimeError('A full buffer was not returned. Try again.')
         if self._kind == 'DHT11':

@@ -82,12 +82,13 @@ export class Bme280 implements DeviceModel {
   private ptr = 0;
   private regs = new Map<number, number>();
   private measured = false;
-  constructor(private host: DeviceHost) {
+  /** chipId 0x60 = BME280, 0x58 = BMP280 (same T/P registers, no humidity) */
+  constructor(private host: DeviceHost, private chipId = 0x60) {
     this.reset();
   }
   reset() {
     this.regs = calibrationBytes();
-    this.regs.set(0xd0, 0x60);
+    this.regs.set(0xd0, this.chipId);
     this.regs.set(0xf2, 0);
     this.regs.set(0xf3, 0);
     this.regs.set(0xf4, 0);
@@ -101,7 +102,7 @@ export class Bme280 implements DeviceModel {
   private latch(resetValues = false) {
     let t = this.host.value('temperature');
     let p = this.host.value('pressure');
-    let h = this.host.value('humidity');
+    let h = this.chipId === 0x60 ? this.host.value('humidity') : 0;
     const f = this.host.fault();
     if (f === 'invalid') {
       t = -40;

@@ -47,13 +47,21 @@ export function dispatchRpc(s: Simulator, method: string, a: any, t: number, hoo
     case 'spi.xfer':
       return s.spiXfer(a.dev, a.data);
     case 'dht.read':
-      return s.dhtRead(a.pin);
+      return s.dhtRead(a.pin, a.kind);
     case 'w1.list':
       return s.w1List();
     case 'w1.read':
       return s.w1Read(a.id);
     case 'cpu.temp':
       return s.cpuTemp();
+    case 'ultra.ping':
+      return s.ultrasonicPing(a.trigger, a.echo, t);
+    case 'ws2812.show':
+      return s.ws2812Show(a.pin, a.pixels);
+    case 'sim.read':
+      return s.noteRead(String(a.comp ?? ''), String(a.what ?? ''), String(a.value ?? ''));
+    case 'driver.loaded':
+      return s.log(`Python driver loaded: ${a.module} (${a.kind})`);
     case 'http.serve':
       hooks.serve(a.port ?? 5000);
       s.log(`Web server listening on http://raspberrypi.local:${a.port ?? 5000}/`);
@@ -82,6 +90,8 @@ export function dispatchPost(s: Simulator, method: string, a: any, t: number, ho
       return hooks.httpResponse(a);
     case 'sim.log':
       return s.log(String(a.msg), a.level ?? 'info');
+    case 'driver.loaded':
+      return s.log(`Python driver loaded: ${a.module} (${a.kind})`);
   }
 }
 

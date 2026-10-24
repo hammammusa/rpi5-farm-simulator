@@ -1693,3 +1693,146 @@ body.no-select {
     display: none;
   }
 }
+.pt-pin {
+  font: 600 5.5px var(--mono);
+  pointer-events: none;
+  opacity: 0.9;
+}
+/* ------------------------------------------------ library v2 */
+.lib-filters {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 6px;
+}
+.lib-filters select {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+.lib-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lib-desc {
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lib-cat.farm .lib-cat-head {
+  color: var(--accent);
+}
+.fid-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.lib-item .fid-dot {
+  position: absolute;
+  top: 4px;
+  inset-inline-end: 4px;
+}
+.fid-full {
+  background: var(--ok);
+}
+.fid-functional {
+  background: var(--info);
+}
+.fid-experimental {
+  background: var(--warn);
+}
+.fid-visual {
+  background: var(--muted);
+}
+.fid {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 9px;
+  color: #fff;
+}
+.fid.fid-functional,
+.fid.fid-full {
+  color: #04140c;
+}
+.lib-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--line);
+}
+/* ------------------------------------------------ inspector v2 */
+.insp-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.insp-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.insp-tabs button {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 5px 2px;
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+.insp-tabs button.on {
+  border-bottom-color: var(--accent2);
+  color: var(--accent2);
+  font-weight: 700;
+}
+.code-sample {
+  font: 11px/1.35 var(--mono);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre;
+}
+.tiny {
+  font-size: 10px;
+}
+.driver-doc summary {
+  cursor: pointer;
+  padding: 3px 0;
+}
+.driver-doc ul {
+  margin: 4px 0;
+  padding-inline-start: 16px;
+}
+p.ok {
+  color: var(--ok);
+}
+p.err {
+  color: var(--danger);
+}
+.cm-pidoc {
+  max-width: 420px;
+  padding: 6px 8px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cm-pidoc code {
+  font: 600 12px var(--mono);
+  color: var(--accent2);
+}

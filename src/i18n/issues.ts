@@ -283,3 +283,55 @@ export const PY_ERROR_TEXT: Record<string, { en: string; ar: string }> = {
 export function fill(s: string, params?: Record<string, string | number>) {
   return s.replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? String(params[k]) : `{${k}}`));
 }
+
+// ---------------------------------------------------------------- extended component library
+Object.assign(ISSUE_TEXT, {
+  E_ECHO_5V: {
+    en: { title: 'HC-SR04 ECHO (5 V) wired straight to GPIO{pin}', explain: 'The ECHO output swings to the module supply (5 V), which exceeds the Pi’s 3.3 V GPIO limit. Put a divider between ECHO and the GPIO (e.g. 1 kΩ from ECHO, 2 kΩ to GND) or use a level shifter.' },
+    ar: { title: 'طرف ECHO (5 فولت) في HC-SR04 موصول مباشرة بـ GPIO{pin}', explain: 'يخرج طرف ECHO بجهد التغذية (5 فولت)، وهذا يتجاوز حد 3.3 فولت لأطراف GPIO. ضع مقسم جهد بين ECHO وطرف GPIO (مثلاً 1 كيلو أوم من ECHO و2 كيلو أوم إلى الأرضي) أو استخدم محول مستوى.' },
+  },
+  W_ADC_INPUT_RANGE: {
+    en: { title: 'ADC input {pin} at {v} V is above VDD ({vdd} V)', explain: 'ADS1115 inputs must stay between GND and VDD + 0.3 V. Divide the sensor output down (e.g. 10 kΩ / 20 kΩ) or power the ADC from a higher supply — but then its I2C pull-ups must not exceed 3.3 V.' },
+    ar: { title: 'دخل الـ ADC {pin} عند {v} فولت أعلى من VDD ({vdd} فولت)', explain: 'يجب أن يبقى دخل ADS1115 بين GND وVDD + 0.3 فولت. قسّم خرج الحساس (مثلاً 10 كيلو / 20 كيلو أوم) أو غذِّ الـ ADC بجهد أعلى مع الانتباه إلى ألا تتجاوز مقاومات سحب I2C جهد 3.3 فولت.' },
+  },
+  W_CHIP_IN_RESET: {
+    en: { title: 'Chip held in reset ({pin} is LOW or floating)', explain: 'The reset pin must be pulled HIGH for the chip to work. Connect it to VDD (directly or with a 10 kΩ resistor).' },
+    ar: { title: 'الشريحة في حالة إعادة الضبط (الطرف {pin} منخفض أو عائم)', explain: 'يجب سحب طرف إعادة الضبط إلى HIGH حتى تعمل الشريحة. صِله بـ VDD مباشرة أو عبر مقاومة 10 كيلو أوم.' },
+  },
+  W_LOGIC_INPUT_FLOATING: {
+    en: { title: 'Logic input {pin} is floating', explain: 'CMOS logic inputs must be driven or tied HIGH/LOW. A floating input reads randomly in a real circuit. Connect it to a GPIO, VCC or GND.' },
+    ar: { title: 'دخل منطقي {pin} عائم', explain: 'يجب توصيل مداخل CMOS المنطقية بمخرج أو تثبيتها على HIGH/LOW. الدخل العائم يقرأ قيماً عشوائية في الدائرة الحقيقية. صِله بـ GPIO أو VCC أو GND.' },
+  },
+  W_IC_OUTPUT_CURRENT: {
+    en: { title: 'Output {pin} overloaded ({ma} mA)', explain: 'A 74HC output should supply at most about 20–35 mA. Add or increase the series resistor, or use a transistor/driver.' },
+    ar: { title: 'حمل زائد على المخرج {pin} ({ma} مللي أمبير)', explain: 'يجب ألا يتجاوز تيار مخرج 74HC نحو 20–35 مللي أمبير. أضف مقاومة أو زد قيمتها، أو استخدم ترانزستوراً أو دائرة قيادة.' },
+  },
+  W_LEVEL_SIDES_SWAPPED: {
+    en: { title: 'Level shifter LV ({lv} V) is higher than HV ({hv} V)', explain: 'LV must be the low-voltage side (3.3 V from the Pi) and HV the high side (5 V). Swap the supply wires.' },
+    ar: { title: 'جهد LV ({lv} فولت) في محول المستوى أعلى من HV ({hv} فولت)', explain: 'يجب أن يكون LV الجانب المنخفض (3.3 فولت من Pi) وHV الجانب المرتفع (5 فولت). بدّل سلكي التغذية.' },
+  },
+  W_REG_DROPOUT: {
+    en: { title: 'Regulator input too low ({vin} V)', explain: 'This regulator needs at least {vout} V + {drop} V on VIN to regulate. Below that the output sags and connected parts may brown out.' },
+    ar: { title: 'جهد دخل المنظم منخفض ({vin} فولت)', explain: 'يحتاج هذا المنظم إلى {vout} + {drop} فولت على الأقل على VIN. تحت ذلك ينخفض الخرج وقد تتوقف القطع الموصولة.' },
+  },
+  W_STEPPER_RESET_FLOATING: {
+    en: { title: 'Stepper driver /RST is floating', explain: 'On A4988/DRV8825 carriers /RST has no pull-up: the driver ignores STEP pulses. Bridge /RST to /SLP (which is pulled up on the board).' },
+    ar: { title: 'الطرف /RST في دائرة قيادة المحرك الخطوي عائم', explain: 'في لوحات A4988/DRV8825 لا توجد مقاومة سحب على /RST، فتتجاهل الدائرة نبضات STEP. صِل /RST بـ /SLP (المسحوب إلى HIGH على اللوحة).' },
+  },
+  W_DRIVER_STANDBY: {
+    en: { title: 'TB6612FNG is in standby (STBY LOW)', explain: 'Drive STBY HIGH (GPIO or 3.3 V) to enable the outputs.' },
+    ar: { title: 'دائرة TB6612FNG في وضع الاستعداد (STBY منخفض)', explain: 'اجعل الطرف STBY في HIGH (من GPIO أو 3.3 فولت) لتفعيل المخارج.' },
+  },
+  I_WS2812_3V3_DATA: {
+    en: { title: 'NeoPixel data from a 3.3 V GPIO into a 5 V strip', explain: 'WS2812B data needs about 0.7 × VDD = 3.5 V. A 3.3 V GPIO often works on short strips but is out of spec — use a 74AHCT125 level shifter for reliability.' },
+    ar: { title: 'إشارة بيانات NeoPixel من GPIO بجهد 3.3 فولت إلى شريط 5 فولت', explain: 'تحتاج بيانات WS2812B إلى نحو 0.7 × VDD = 3.5 فولت. غالباً ينجح 3.3 فولت مع الأشرطة القصيرة لكنه خارج المواصفات — استخدم محول مستوى 74AHCT125 لضمان الاعتمادية.' },
+  },
+  W_DHT_TYPE_MISMATCH: {
+    en: { title: 'Code reads a {want}, but the sensor on GPIO{pin} is a {kind}', explain: 'The DHT11 and DHT22 send their 40 data bits in different formats, so the wrong driver class returns wrong numbers (no error!). Use adafruit_dht.{kind}.' },
+    ar: { title: 'الكود يقرأ {want} بينما الحساس على GPIO{pin} من نوع {kind}', explain: 'يرسل DHT11 وDHT22 بياناتهما بصيغتين مختلفتين، لذلك يعيد الصنف الخاطئ أرقاماً خاطئة دون خطأ ظاهر. استخدم adafruit_dht.{kind}.' },
+  },
+  W_CODE_PIN_MISMATCH: {
+    en: { title: 'Code reads GPIO{pin}, but nothing matching is wired there', explain: '{hint}. Change the pin number in the code or move the wire.' },
+    ar: { title: 'الكود يقرأ GPIO{pin} ولا يوجد حساس مطابق موصول به', explain: '{hint}. غيّر رقم الطرف في الكود أو انقل السلك.' },
+  },
+});

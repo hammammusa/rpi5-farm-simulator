@@ -3,7 +3,7 @@ import type { PinDef, PropDef } from '../types';
 import type { Solution } from '../solver';
 import { FAULT, clamp, pin, type PartManifest } from './base';
 
-const roleProp = (roles: FarmRole[], def: FarmRole): PropDef => ({
+export const roleProp = (roles: FarmRole[], def: FarmRole): PropDef => ({
   key: 'role',
   label: 'Smart Farm role',
   type: 'select',
@@ -12,7 +12,7 @@ const roleProp = (roles: FarmRole[], def: FarmRole): PropDef => ({
   group: 'farm',
 });
 
-interface LoadOpts {
+export interface LoadOpts {
   type: string;
   name: string;
   description: string;
@@ -31,7 +31,7 @@ interface LoadOpts {
   faults?: { id: string; label: string; help?: string }[];
 }
 
-function load(o: LoadOpts): PartManifest {
+export function load(o: LoadOpts): PartManifest {
   const props: PropDef[] = [
     {
       key: 'vrated',
@@ -107,7 +107,7 @@ function load(o: LoadOpts): PartManifest {
   };
 }
 
-const PUMP_FAULTS = [FAULT.none, FAULT.pumpFail, FAULT.clogged, FAULT.burned];
+export const PUMP_FAULTS = [FAULT.none, FAULT.pumpFail, FAULT.clogged, FAULT.burned];
 
 export const waterPump = load({
   type: 'water_pump',

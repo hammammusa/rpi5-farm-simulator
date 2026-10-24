@@ -4,6 +4,13 @@ import * as basic from './basic';
 import * as act from './actuators';
 import * as sen from './sensors';
 import * as disp from './displays';
+import { ENV_PARTS } from './env';
+import { WATER_PARTS } from './water';
+import { IC_PARTS } from './ics';
+import { MOTION_PARTS } from './motion';
+import { DISPLAY2_PARTS } from './displays2';
+import { FARMKIT_PARTS } from './farmkit';
+import { applyCatalog } from '../../catalog/registry';
 
 export const PARTS: PartManifest[] = [
   pi5,
@@ -49,7 +56,14 @@ export const PARTS: PartManifest[] = [
   disp.lcd1602,
   disp.oled,
   disp.usbSerial,
+  ...ENV_PARTS,
+  ...WATER_PARTS,
+  ...IC_PARTS,
+  ...MOTION_PARTS,
+  ...DISPLAY2_PARTS,
+  ...FARMKIT_PARTS,
 ];
+applyCatalog(PARTS);
 
 const byType = new Map(PARTS.map((p) => [p.type, p]));
 

@@ -387,6 +387,24 @@ export class FarmModel {
         return s.leakActive ? 1 : 0;
       case 'tray.moisture':
         return Math.min(100, 25 + (75 * s.inTransitL) / Math.max(0.1, this.cfg.channelCapacityL));
+      // ---- derived readings used by the extended sensor library (declared simplifications)
+      case 'water.tds':
+        return s.reservoir.ec * 500; // ppm, 500 scale (TDS ≈ 500 × EC[mS/cm])
+      case 'water.distanceCm':
+        return Math.max(2, this.cfg.reservoir.heightCm * (1 - this.levelPct() / 100) + 3); // sensor 3 cm above the brim
+      case 'water.do': {
+        const T = s.reservoir.tempC;
+        const sat = 14.62 - 0.3898 * T + 0.006969 * T * T - 0.00005897 * T * T * T; // mg/L at 1 atm
+        return sat * (s.flowLpm > 0.1 ? 0.95 : 0.8);
+      }
+      case 'tank.a':
+        return (100 * s.tankA) / Math.max(0.01, this.cfg.tankA.capacityL);
+      case 'tank.b':
+        return (100 * s.tankB) / Math.max(0.01, this.cfg.tankB.capacityL);
+      case 'tank.phdown':
+        return (100 * s.phDown) / Math.max(0.01, this.cfg.phDown.capacityL);
+      case 'pipe.kPa':
+        return s.flowLpm > 0 ? 20 + 10 * s.flowLpm : 0;
       default:
         return 0;
     }

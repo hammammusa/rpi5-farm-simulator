@@ -279,7 +279,12 @@ test.describe('D · wire editing', () => {
     expect((await comp(page, 'led1')).x).toBe(before.x);
     // multi-select + align top through the toolbar
     await page.getByTestId('comp-r1').click();
-    await page.getByTestId('comp-r2').click({ modifiers: ['Shift'] });
+    // w4 ends on R2's left pin and runs across its thin body: shift-click the lower edge of R2
+    const rb = (await page.getByTestId('comp-r2').boundingBox())!;
+    await page.keyboard.down('Shift');
+    await page.mouse.click(rb.x + rb.width * 0.7, rb.y + rb.height - 2);
+    await page.keyboard.up('Shift');
+    expect(await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().selection)).toEqual(['r1', 'r2']);
     await page.getByTestId('align-top').click();
     const [r1, r2] = [await comp(page, 'r1'), await comp(page, 'r2')];
     expect(r1.y).toBe(r2.y);

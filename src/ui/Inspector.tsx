@@ -9,6 +9,7 @@ import { pinPosition, useApp, viewOf } from '../state/store';
 import { issueText, useT } from '../i18n';
 import { compName, pinName } from '../state/wiring';
 import { IssueCard } from './Problems';
+import { PartInspector } from './PartInspector';
 
 function PropInput({ def, value, onChange }: { def: PropDef; value: any; onChange: (v: any, history?: boolean) => void }) {
   if (def.type === 'boolean')
@@ -209,124 +210,11 @@ export function Inspector() {
 
   const c = doc.components.find((x) => x.id === selection[0]);
   if (!c || !hasPart(c.type)) return <aside className="inspector" />;
-  const m = getPart(c.type);
-  const props = withDefaults(m, c.props);
-  const v = sim.vis.get(c.id) ?? {};
-  const myIssues = sim.issues.filter((i) => i.comps.includes(c.id));
-  const groups: { id: string; label: string }[] = [
-    { id: 'sensor', label: 'Live values (change while running)' },
-    { id: 'config', label: 'Configuration' },
-    { id: 'farm', label: 'Smart Farm link' },
-  ];
-  const pins = pinsOf(m, props);
-  return (
-    <aside className="inspector" aria-label={t('Inspector')} data-testid="inspector">
-      <div className="panel-title">{m.name}</div>
-      <p className="muted small">{m.description}</p>
-      {m.support === 'partial' && m.limits && <p className="limits small">⚠ {m.limits}</p>}
-      {m.support === 'full' && m.limits && <p className="muted small">ℹ {m.limits}</p>}
-      <label className="field">
-        <span>{t('Label')}</span>
-        <input value={c.label ?? ''} placeholder={c.id} onChange={(e) => st.setLabel(c.id, e.target.value)} />
-      </label>
-      {(m.voltage || m.python) && (
-        <div className="kv small">
-          {m.voltage && (
-            <div>
-              <b>{t('Voltage')}:</b> {m.voltage}
-            </div>
-          )}
-          {m.interfaces && (
-            <div>
-              <b>{t('Interface')}:</b> {m.interfaces.join(', ')}
-            </div>
-          )}
-          {m.python && (
-            <div dir="ltr">
-              <b>Python:</b> <code>{m.python}</code>
-            </div>
-          )}
-        </div>
-      )}
-      {groups.map((g) => {
-        const defs = m.props.filter((p) => (p.group ?? 'config') === g.id && (!p.visible || p.visible(props)));
-        if (!defs.length && !(g.id === 'sensor' && m.props.some((p) => p.key === 'source'))) return null;
-        return (
-          <div key={g.id}>
-            <div className="panel-title sub">{t(g.label)}</div>
-            {defs.map((d) => (
-              <label key={d.key} className="field" title={d.help}>
-                <span>{t(d.label)}</span>
-                <PropInput def={d} value={props[d.key]} onChange={(val, h = true) => st.setProp(c.id, d.key, val, h)} />
-              </label>
-            ))}
-          </div>
-        );
-      })}
-      {m.faults && m.faults.length > 1 && (
-        <>
-          <div className="panel-title sub">{t('Fault injection')}</div>
-          <label className="field">
-            <span>{t('Fault')}</span>
-            <select value={props.fault ?? 'none'} onChange={(e) => st.setProp(c.id, 'fault', e.target.value)} data-testid="fault-select">
-              {m.faults.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {t(f.label)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {props.fault && props.fault !== 'none' && <p className="muted small">{m.faults.find((f) => f.id === props.fault)?.help}</p>}
-        </>
-      )}
-      <div className="panel-title sub">{t('Live state')}</div>
-      <LiveState type={c.type} v={v} />
-      {myIssues.length > 0 && (
-        <>
-          <div className="panel-title sub">{t('Problems')}</div>
-          {myIssues.map((i) => (
-            <IssueCard key={i.key} issue={i} compact />
-          ))}
-        </>
-      )}
-      {c.type !== 'breadboard' && (
-        <>
-          <div className="panel-title sub">{t('Pins')}</div>
-          <table className="pin-table" dir="ltr">
-            <tbody>
-              {pins.map((p) => {
-                const n = sim.net.netOf({ comp: c.id, pin: p.id });
-                const net = n >= 0 ? sim.net.nets[n] : null;
-                const others = net ? net.pins.filter((x) => x.comp !== c.id && doc.components.find((k) => k.id === x.comp)?.type !== 'breadboard') : [];
-                const vv = n >= 0 ? sim.netVoltage(n) : null;
-                const label = c.type === 'rpi5' ? `${p.id.slice(1)} ${p.label}` : p.label;
-                if (c.type === 'rpi5' && !others.length) return null;
-                return (
-                  <tr key={p.id}>
-                    <td>{label}</td>
-                    <td className="muted">{others.length ? others.slice(0, 2).map((x) => `${compName(doc, x.comp).split(' (')[0]}.${pinName(doc, x.comp, x.pin)}`).join(', ') : '—'}</td>
-                    <td className="num">{vv !== null && others.length ? `${vv.toFixed(2)}V` : ''}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {c.type === 'rpi5' && <p className="muted small">{t('Only connected header pins are listed. Hover a pin in the workspace for details.')}</p>}
-        </>
-      )}
-      <div className="row">
-        <button onClick={() => st.rotateSelected()}>{t('Rotate')}</button>
-        <button onClick={() => st.duplicateSelected()}>{t('Duplicate')}</button>
-        <button className="danger" onClick={() => st.deleteSelected()}>
-          {t('Delete')}
-        </button>
-      </div>
-      {void lang}
-    </aside>
-  );
+  void lang;
+  return <PartInspector key={c.id} c={c} PropInput={PropInput} LiveState={LiveState} />;
 }
 
-function LiveState({ type, v }: { type: string; v: Record<string, any> }) {
+export function LiveState({ type, v }: { type: string; v: Record<string, any> }) {
   const t = useT();
   const rows: [string, string][] = [];
   const n = (x: any, d = 2) => (typeof x === 'number' && Number.isFinite(x) ? x.toFixed(d) : '—');
@@ -361,6 +249,22 @@ function LiveState({ type, v }: { type: string; v: Record<string, any> }) {
       if ('closed' in v) rows.push([t('Contact'), v.closed ? t('closed') : t('open')]);
       if ('doLow' in v) rows.push(['DO', v.doLow ? 'LOW' : 'HIGH']);
       if ('hz' in v) rows.push([t('Pulses'), `${n(v.hz, 1)} Hz`]);
+      if ('vin' in v) rows.push(['VIN', `${n(v.vin)} V`]);
+      if ('vout' in v) rows.push(['VOUT', `${n(v.vout)} V`]);
+      if ('iout' in v) rows.push([t('Output current'), `${n((v.iout ?? 0) * 1000, 0)} mA`]);
+      if ('heatW' in v) rows.push([t('Heat'), `${n(v.heatW, 2)} W`]);
+      if (Array.isArray(v.ch)) v.ch.forEach((x: any, i: number) => rows.push([type === 'ads1115' ? `A${i}` : `CH${i}`, x === null ? t('floating') : `${n(x, 3)} V`]));
+      if ('rpm' in v) rows.push([t('Speed'), `${n(v.rpm, 0)} rpm`]);
+      if ('steps' in v) rows.push([t('Steps'), `${n(v.steps, 0)}`]);
+      if ('micro' in v) rows.push([t('Microstep'), `1/${v.micro}`]);
+      if ('latch' in v) rows.push([t('Output latch'), `0b${Number(v.latch ?? 0).toString(2).padStart(8, '0')}`]);
+      if ('levels' in v) rows.push([t('Pin levels'), (v.levels ?? []).join('')]);
+      if ('distance' in v) rows.push([t('Distance'), `${n(v.distance, 1)} cm`]);
+      if ('motion' in v) rows.push([t('Motion'), v.motion ? t('yes') : t('no')]);
+      if (Array.isArray(v.pixels)) rows.push([t('Pixels lit'), `${v.pixels.filter((p: number[]) => p && p[0] + p[1] + p[2] > 0).length}`]);
+      if (Array.isArray(v.digits)) rows.push([t('Digits'), v.digits.map((d: number) => d.toString(16).padStart(2, '0')).join(' ')]);
+      if ('ec' in v && 'level' in v) rows.push(['EC / pH', `${n(v.ec, 2)} / ${n(v.ph, 2)}`]);
+      if ('level' in v && typeof v.level === 'number') rows.push([t('Volume'), `${n(v.level, 2)} L`]);
   }
   if (!rows.length) return <p className="muted small">—</p>;
   return (

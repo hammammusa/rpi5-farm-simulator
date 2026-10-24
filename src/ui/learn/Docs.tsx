@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import { useApp } from '../../state/store';
+import { DRIVERS } from '../../catalog/drivers';
+import { PARTS } from '../../engine/parts';
+import { FIDELITY_LABEL } from '../../catalog/registry';
 
 const ROWS: [string, string, string][] = [
   ['gpiozero', 'LED, PWMLED, RGBLED, Buzzer, OutputDevice, DigitalOutputDevice, PWMOutputDevice, Motor, Servo, AngularServo, InputDevice, DigitalInputDevice, Button, MotionSensor, LineSensor, MCP3008, CPUTemperature; on/off/toggle/blink/pulse, value, is_active, when_pressed/released/held/activated/deactivated, wait_for_*, source', 'Callbacks run during sleep()/pause()/waits instead of a background thread. Pin factory is the simulator (lgpio on a real Pi 5).'],
@@ -50,6 +54,8 @@ export function Docs() {
           ))}
         </tbody>
       </table>
+      <BuiltInLibraries />
+      <ComponentCoverage />
       <h2>Raspberry Pi 5 specifics</h2>
       <ul>
         <li>GPIO is 3.3 V logic and not 5 V tolerant. There is no analog input — use an ADC such as the MCP3008.</li>
@@ -68,8 +74,75 @@ export function Docs() {
       <h2>Keyboard shortcuts</h2>
       <ul dir="ltr">
         <li>F5 / Ctrl+Enter run · Shift+F5 stop · Ctrl+S save · Ctrl+Z / Ctrl+Y undo/redo</li>
-        <li>Workspace: R rotate · Ctrl+D duplicate · Delete · Ctrl+A select all · arrows move · +/− zoom · 0 fit · Esc cancel wire · Space+drag pan</li>
+        <li>Workspace: Ctrl+drag / Space+drag pan · wheel zoom · R rotate · Ctrl+C/V copy/paste · Ctrl+D duplicate · Ctrl+G group · L lock · Delete · Ctrl+A select all · arrows move · F fit · ? all shortcuts</li>
       </ul>
     </article>
+  );
+}
+
+/** Every pre-installed hardware module with its implemented API and the real-Pi install command. */
+function BuiltInLibraries() {
+  const lang = useApp((s) => s.lang);
+  const [q, setQ] = useState('');
+  const ql = q.toLowerCase();
+  const list = DRIVERS.filter((d) => !ql || `${d.module} ${d.title} ${d.apis.map((a) => a.name).join(' ')}`.toLowerCase().includes(ql));
+  return (
+    <section data-testid="libraries">
+      <h2>{lang === 'ar' ? 'المكتبات المثبتة مسبقاً (بدون pip)' : 'Built-in libraries (no pip install needed)'}</h2>
+      <p className="muted small">
+        {lang === 'ar'
+          ? 'اكتب جملة الاستيراد فقط. "متوافق" تعني نفس واجهة المكتبة الحقيقية (للدوال المذكورة فقط)، و"خاص بالمحاكي" تعني واجهة مبسطة تحتاج تعديلاً على الجهاز الحقيقي.'
+          : 'Just write the import. "Compatible" means the same API as the real library (for the functions listed); "simulator API" means a simplified API you adapt on real hardware.'}
+      </p>
+      <input className="search" placeholder="gpiozero, ADS1115, read_byte_data…" value={q} onChange={(e) => setQ(e.target.value)} data-testid="lib-doc-search" />
+      {list.map((d) => (
+        <details key={d.module} className="driver-doc">
+          <summary>
+            <code dir="ltr">{d.module === 'RPi' ? 'RPi.GPIO' : d.module}</code> — {d.title.split(' — ')[1] ?? d.title}{' '}
+            <span className={`badge ${d.kind === 'simulator' ? 'warn' : ''}`}>{d.kind === 'compatible' ? (lang === 'ar' ? 'متوافق' : 'compatible') : lang === 'ar' ? 'خاص بالمحاكي' : 'simulator API'}</span>
+          </summary>
+          <table className="data-table small" dir="ltr">
+            <tbody>
+              {d.apis.map((a) => (
+                <tr key={a.name}>
+                  <td>
+                    <code>{a.sig ?? a.name}</code>
+                  </td>
+                  <td>{a.doc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="small">
+            <b>{lang === 'ar' ? 'على Raspberry Pi 5 حقيقي:' : 'On a real Raspberry Pi 5:'}</b> <code dir="ltr">{d.real.install}</code> {d.real.note}
+          </p>
+          {d.limits && <p className="small muted">{d.limits}</p>}
+        </details>
+      ))}
+    </section>
+  );
+}
+
+function ComponentCoverage() {
+  const lang = useApp((s) => s.lang);
+  const parts = PARTS.filter((p) => !p.hidden);
+  const count = (f: string) => parts.filter((p) => p.fidelity === f).length;
+  return (
+    <section data-testid="coverage">
+      <h2>{lang === 'ar' ? 'تغطية المكونات' : 'Component coverage'}</h2>
+      <p className="small">
+        {parts.length} {lang === 'ar' ? 'مكوناً' : 'components'} ·{' '}
+        {(['full', 'functional', 'experimental', 'visual'] as const).map((f) => (
+          <span key={f}>
+            <span className={`fid-dot fid-${f}`} /> {FIDELITY_LABEL[f][lang]}: {count(f)}{' '}
+          </span>
+        ))}
+      </p>
+      <p className="muted small">
+        {lang === 'ar'
+          ? 'كل مكون غير مرئي فقط له مثال جاهز يُختبر تلقائياً بتشغيل الكود على الدائرة المحاكاة.'
+          : 'Every component that is not visual-only has a ready example that is tested automatically by running its code against the simulated circuit.'}
+      </p>
+    </section>
   );
 }

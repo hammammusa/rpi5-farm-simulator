@@ -5,10 +5,12 @@ import { PythonRuntime, type RunResult } from '../runtime/bridge';
 import { useApp } from './store';
 import { lastProjectId, loadProject as idbLoad, migrate, saveProject } from './persist';
 import { newProject } from '../engine/project';
+import { attachSim } from '../catalog/examples';
 import { translate } from '../i18n';
 import { pyErrorText } from '../i18n';
 
 export const sim = new Simulator(useApp.getState().doc);
+attachSim(() => sim);
 let runtime: PythonRuntime | null = null;
 let stdinResolve: ((s: string) => void) | null = null;
 

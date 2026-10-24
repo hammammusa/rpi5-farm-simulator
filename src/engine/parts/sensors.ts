@@ -2,7 +2,7 @@ import type { PropDef } from '../types';
 import { GND } from '../solver';
 import { FAULT, SENSOR_FAULTS, clamp, pin, sourceProp, type PartManifest, type PostCtx, type StampCtx } from './base';
 
-const num = (key: string, label: string, def: number, min: number, max: number, unit: string, step = 0.1): PropDef => ({
+export const num = (key: string, label: string, def: number, min: number, max: number, unit: string, step = 0.1): PropDef => ({
   key,
   label,
   type: 'number',
@@ -17,7 +17,7 @@ const num = (key: string, label: string, def: number, min: number, max: number, 
 });
 
 /** Common power-check used by every sensor. Stores the supply voltage for the next stamp pass. */
-function powerPost(ctx: PostCtx, vcc: string, gnd: string, min: number, max: number) {
+export function powerPost(ctx: PostCtx, vcc: string, gnd: string, min: number, max: number) {
   const vs = ctx.connected(vcc) && ctx.connected(gnd) ? ctx.volt(vcc) - ctx.volt(gnd) : 0;
   const powered = vs >= min && vs <= max + 0.3;
   if (ctx.rt.vs === undefined || Math.abs(ctx.rt.vs - vs) > 0.01) {
@@ -34,7 +34,7 @@ function powerPost(ctx: PostCtx, vcc: string, gnd: string, min: number, max: num
   return { vs, powered: powered && !ctx.rt.damaged };
 }
 
-function anySignalConnected(ctx: PostCtx) {
+export function anySignalConnected(ctx: PostCtx) {
   return ['DATA', 'OUT', 'AO', 'DO', 'SDA', 'SCL', 'TX', 'RX', 'DQ', 'SIG'].some((p) => {
     try {
       return ctx.connected(p);
@@ -45,21 +45,21 @@ function anySignalConnected(ctx: PostCtx) {
 }
 
 /** Analog output modelled as a Thevenin source (1 kΩ) referenced to the sensor GND. */
-function analogOut(ctx: StampCtx, out: string, gnd: string, volts: number) {
+export function analogOut(ctx: StampCtx, out: string, gnd: string, volts: number, vmin = 3.0, rout = 1000) {
   if (ctx.fault === 'disconnected') return;
   const vs = ctx.rt.vs ?? 3.3;
-  const powered = vs >= 3.0 && !ctx.rt.damaged;
-  ctx.V('ao', ctx.node(out), ctx.node(gnd), powered ? clamp(volts, 0, Math.max(0, vs - 0.05)) : 0, 1000);
+  const powered = vs >= vmin && !ctx.rt.damaged;
+  ctx.V('ao', ctx.node(out), ctx.node(gnd), powered ? clamp(volts, 0, Math.max(0, vs - 0.05)) : 0, rout);
 }
 
-function analogPost(ctx: PostCtx, out: string, extra: Record<string, any> = {}) {
+export function analogPost(ctx: PostCtx, out: string, extra: Record<string, any> = {}) {
   const gp = ctx.gpioOf(out);
   if (gp !== null) ctx.issue('E_ANALOG_NO_ADC', 'error', { pin: gp }, [out]);
   else if (!ctx.connected(out) && ctx.connected('VCC')) ctx.issue('W_SENSOR_DISCONNECTED', 'warning', { pin: out }, [out]);
   return { aout: ctx.volt(out) - ctx.volt('GND'), ...extra };
 }
 
-const analogLimits = 'Output voltage follows a documented linear calibration; read it with an MCP3008 ADC (Raspberry Pi 5 has no analog inputs).';
+export const analogLimits = 'Output voltage follows a documented linear calibration; read it with an MCP3008 ADC (Raspberry Pi 5 has no analog inputs).';
 
 // ---------------------------------------------------------------- DHT22
 export const dht22: PartManifest = {
@@ -210,43 +210,58 @@ export const mhz19b: PartManifest = {
 };
 
 // ---------------------------------------------------------------- analog sensors
-function analogSensor(o: {
+export function analogSensor(o: {
   type: string;
   name: string;
   description: string;
   quantity: PropDef;
-  farmKey: string;
+  farmKey?: string;
   noise: number;
   volts: (value: number, ctx: StampCtx) => number;
   formula: string;
   extraProps?: PropDef[];
   w?: number;
+  /** supply range (default 3.0–5.5 V) */
+  vmin?: number;
+  vmax?: number;
+  voltage?: string;
+  python?: string;
+  model?: string;
+  manufacturer?: string;
+  limits?: string;
+  short?: string;
+  pinLabels?: [string, string, string];
+  /** output impedance of the module (default 1 kΩ; amplified boards ≈ 100 Ω) */
+  rout?: number;
 }): PartManifest {
   return {
     type: o.type,
     name: o.name,
+    short: o.short,
+    model: o.model,
+    manufacturer: o.manufacturer,
     category: 'sensor',
     description: `${o.description} Calibration used by the simulator: ${o.formula}`,
     w: o.w ?? 50,
     h: 60,
-    pins: [pin('VCC', 'VCC', 0, 50, 'power'), pin('GND', 'GND', 10, 50, 'ground'), pin('AO', 'AO (analog)', 20, 50, 'analog')],
+    pins: [pin('VCC', o.pinLabels?.[0] ?? 'VCC', 0, 50, 'power'), pin('GND', o.pinLabels?.[1] ?? 'GND', 10, 50, 'ground'), pin('AO', o.pinLabels?.[2] ?? 'AO (analog)', 20, 50, 'analog')],
     props: [sourceProp(), o.quantity, ...(o.extraProps ?? [])],
     faults: SENSOR_FAULTS.filter((f) => f.id !== 'timeout'),
     noise: { [o.quantity.key]: o.noise },
-    farmKeys: { [o.quantity.key]: o.farmKey },
+    farmKeys: o.farmKey ? { [o.quantity.key]: o.farmKey } : undefined,
     support: 'full',
-    limits: analogLimits,
-    voltage: '3.3–5 V',
-    interfaces: ['Analog → MCP3008'],
-    python: 'gpiozero.MCP3008(channel=N).voltage',
+    limits: o.limits ?? analogLimits,
+    voltage: o.voltage ?? '3.3–5 V',
+    interfaces: ['Analog → ADC (MCP3008 / ADS1115)'],
+    python: o.python ?? 'gpiozero.MCP3008(channel=N).voltage · adafruit_ads1x15 AnalogIn(ads, P0).voltage · smartfarm',
     insertable: true,
     stamp(ctx) {
       ctx.R('idd', ctx.node('VCC'), ctx.node('GND'), 5000);
       const v = ctx.fault === 'invalid' ? 0 : o.volts(ctx.value(o.quantity.key), ctx);
-      analogOut(ctx, 'AO', 'GND', v);
+      analogOut(ctx, 'AO', 'GND', v, o.vmin ?? 3.0, o.rout ?? 1000);
     },
     post(ctx) {
-      const p = powerPost(ctx, 'VCC', 'GND', 3.0, 5.5);
+      const p = powerPost(ctx, 'VCC', 'GND', o.vmin ?? 3.0, o.vmax ?? 5.5);
       return { ...p, ...analogPost(ctx, 'AO'), value: ctx.value(o.quantity.key) };
     },
   };
@@ -341,7 +356,7 @@ export const floatSwitch: PartManifest = {
   },
 };
 
-function comparatorModule(o: { type: string; name: string; description: string; quantity: PropDef; farmKey: string; activeWhen: (v: number, p: Record<string, any>) => boolean; aout: (v: number) => number; extra?: PropDef[] }): PartManifest {
+export function comparatorModule(o: { type: string; name: string; description: string; quantity: PropDef; farmKey: string; activeWhen: (v: number, p: Record<string, any>) => boolean; aout: (v: number) => number; extra?: PropDef[] }): PartManifest {
   return {
     type: o.type,
     name: o.name,
@@ -411,6 +426,7 @@ export const flowSensor: PartManifest = {
   faults: [FAULT.none, FAULT.disconnected, FAULT.stuck, FAULT.noise],
   noise: { flow: 0.3 },
   farmKeys: { flow: 'flow.lpm' },
+  pulse: { pin: 'SIG', hz: (v) => 7.5 * Math.max(0, v('flow')) },
   support: 'full',
   limits: 'Pulse edges are generated analytically from simulation time (max 400 Hz delivered to Python callbacks).',
   voltage: '4.5–18 V (works from 3.3 V in the simulator with reduced accuracy)',

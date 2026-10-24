@@ -72,7 +72,8 @@ export function validateStatic(sim: Simulator): Issue[] {
       const dc = netOf(c.id, 'SCL');
       if (sda !== undefined && scl !== undefined && ds === scl && dc === sda) add('E_I2C_SWAPPED', 'error', [c.id], {}, [{ comp: c.id, pin: 'SDA' }, { comp: c.id, pin: 'SCL' }]);
       if (ds === sda && dc === scl && ds >= 0) {
-        const addr = Number(props.address);
+        const dev = m.device || m.bus === 'i2c' ? sim.device(c.id) : null;
+        const addr = dev?.i2cAddress ? dev.i2cAddress() : Number(props.address);
         i2cByAddr.set(addr, [...(i2cByAddr.get(addr) ?? []), c.id]);
       }
       const gp = [ds, dc].map((x) => [...net.gpioNet].find(([, nn]) => nn === x)?.[0]).filter((x) => x !== undefined) as number[];
@@ -97,7 +98,7 @@ export function validateStatic(sim: Simulator): Issue[] {
         if (!hasPullupResistor(sim, dq, 10000)) add('W_ONEWIRE_PULLUP', 'warning', [c.id], {}, [{ comp: c.id, pin: 'DQ' }]);
       }
     }
-    if (c.type === 'dht22') {
+    if (c.type === 'dht22' || c.type === 'dht11' || c.type === 'am2302') {
       const d = netOf(c.id, 'DATA');
       if (d >= 0 && net.nets[d].comps.size > 1 && !hasPullupResistor(sim, d, 20000)) add('W_DHT_PULLUP', 'warning', [c.id], {}, [{ comp: c.id, pin: 'DATA' }]);
     }

@@ -903,9 +903,169 @@ class CPUTemperature(Device):
         return self.temperature > self.threshold
 
 
+# ---------------------------------------------------------------- composite / ranging devices
+class DistanceSensor(Device):
+    """HC-SR04 ultrasonic ranger: ``DistanceSensor(echo=24, trigger=23, max_distance=1)``.
+
+    Each read sends a 10 µs trigger pulse and times the echo in simulation time; the echo
+    must reach the echo GPIO through your circuit (use a voltage divider: ECHO is 5 V).
+    """
+
+    def __init__(self, echo=None, trigger=None, *, queue_len=9, max_distance=1, threshold_distance=0.3, partial=False, pin_factory=None):
+        super().__init__()
+        if echo is None or trigger is None:
+            raise GPIOZeroError('echo and trigger pins must be specified')
+        if max_distance <= 0:
+            raise ValueError('invalid maximum distance (must be positive)')
+        self._echo = _call('gpio.pin', spec=echo)
+        self._trigger = _call('gpio.pin', spec=trigger)
+        _call('gpio.setup', pin=self._echo, mode='input', pull='none', owner='DistanceSensor echo')
+        _call('gpio.setup', pin=self._trigger, mode='output', owner='DistanceSensor trigger', initial=0)
+        self._max = float(max_distance)
+        self.threshold_distance = float(threshold_distance)
+        self._last = None
+
+    @property
+    def max_distance(self):
+        return self._max
+
+    @max_distance.setter
+    def max_distance(self, v):
+        if v <= 0:
+            raise ValueError('invalid maximum distance (must be positive)')
+        self._max = float(v)
+
+    @property
+    def echo(self):
+        return Pin(self._echo)
+
+    @property
+    def trigger(self):
+        return Pin(self._trigger)
+
+    def _measure(self):
+        self._check_open()
+        r = _call('ultra.ping', trigger=self._trigger, echo=self._echo)
+        if r.get('cm') is None:
+            if r.get('reason') and 'reach' in r['reason']:
+                import warnings
+
+                warnings.warn('no echo received: %s' % r['reason'])
+            self._last = self._max
+        else:
+            self._last = min(self._max, r['cm'] / 100.0)
+        _sleep(0.06)  # the sensor needs ~60 ms between pings
+        return self._last
+
+    @property
+    def distance(self):
+        return self._measure()
+
+    @property
+    def value(self):
+        return self._measure() / self._max
+
+    @property
+    def in_range(self):
+        return self._measure() < self.threshold_distance
+
+    def close(self):
+        if not self._closed:
+            for p in (self._echo, self._trigger):
+                try:
+                    _call('gpio.release', pin=p)
+                except BaseException:
+                    pass
+        super().close()
+
+
+class LEDBoard(Device):
+    """A group of LEDs: ``LEDBoard(5, 6, 13, pwm=False)``; ``value`` is a tuple."""
+
+    def __init__(self, *pins, pwm=False, active_high=True, initial_value=False, pin_factory=None, **named):
+        super().__init__()
+        cls = PWMLED if pwm else LED
+        self._names = list(named)
+        self.leds = tuple(cls(p, active_high=active_high, initial_value=initial_value) for p in list(pins) + list(named.values()))
+        for n, led in zip(self._names, self.leds[len(pins):]):
+            setattr(self, n, led)
+
+    def __len__(self):
+        return len(self.leds)
+
+    def __getitem__(self, i):
+        return self.leds[i]
+
+    def __iter__(self):
+        return iter(self.leds)
+
+    @property
+    def value(self):
+        return tuple(led.value for led in self.leds)
+
+    @value.setter
+    def value(self, v):
+        for led, x in zip(self.leds, v):
+            led.value = x
+
+    def on(self, *idx):
+        for i, led in enumerate(self.leds):
+            if not idx or i in idx:
+                led.on()
+
+    def off(self, *idx):
+        for i, led in enumerate(self.leds):
+            if not idx or i in idx:
+                led.off()
+
+    def toggle(self, *idx):
+        for i, led in enumerate(self.leds):
+            if not idx or i in idx:
+                led.toggle()
+
+    def close(self):
+        for led in self.leds:
+            led.close()
+        super().close()
+
+
+class LEDCharDisplay(LEDBoard):
+    """Single 7-segment digit: ``LEDCharDisplay(a, b, c, d, e, f, g, dp=None, active_high=True)``."""
+
+    _FONT = {
+        ' ': 0x00, '0': 0x3F, '1': 0x06, '2': 0x5B, '3': 0x4F, '4': 0x66, '5': 0x6D, '6': 0x7D, '7': 0x07, '8': 0x7F, '9': 0x6F,
+        'A': 0x77, 'B': 0x7C, 'C': 0x39, 'D': 0x5E, 'E': 0x79, 'F': 0x71, 'H': 0x76, 'L': 0x38, 'P': 0x73, 'U': 0x3E, '-': 0x40, '_': 0x08,
+    }
+
+    def __init__(self, *pins, dp=None, active_high=True, initial_value=' ', pin_factory=None):
+        if len(pins) != 7:
+            raise ValueError('LEDCharDisplay requires 7 segment pins (a–g)')
+        super().__init__(*(list(pins) + ([dp] if dp is not None else [])), active_high=active_high)
+        self._char = ' '
+        self.value = initial_value
+
+    @property
+    def value(self):
+        return self._char
+
+    @value.setter
+    def value(self, ch):
+        ch = str(ch)
+        dot = ch.endswith('.')
+        c = ch[0].upper() if ch else ' '
+        if c not in self._FONT:
+            raise ValueError('character %r cannot be displayed' % c)
+        bits = self._FONT[c]
+        for i in range(7):
+            self.leds[i].value = bool(bits & (1 << i))
+        if len(self.leds) > 7:
+            self.leds[7].value = dot
+        self._char = ch
+
+
 __all__ = [
     'Device', 'GPIODevice', 'OutputDevice', 'DigitalOutputDevice', 'LED', 'Buzzer', 'PWMOutputDevice', 'PWMLED',
     'RGBLED', 'Motor', 'Servo', 'AngularServo', 'InputDevice', 'DigitalInputDevice', 'Button', 'LineSensor',
-    'MotionSensor', 'MCP3008', 'CPUTemperature', 'GPIOZeroError', 'GPIOPinInUse', 'PinInvalidPin', 'DeviceClosed',
+    'MotionSensor', 'MCP3008', 'CPUTemperature', 'DistanceSensor', 'LEDBoard', 'LEDCharDisplay', 'GPIOZeroError', 'GPIOPinInUse', 'PinInvalidPin', 'DeviceClosed',
     'BadEventHandler', 'OutputDeviceBadValue', 'SPIBadChannel', 'PinInvalidState',
 ]

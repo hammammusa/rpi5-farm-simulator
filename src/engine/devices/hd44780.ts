@@ -16,7 +16,8 @@ export class Hd44780 implements DeviceModel {
   private pending: number | null = null;
   private lastE = 0;
   private port = 0xff;
-  constructor(private host: DeviceHost) {}
+  /** 16×2 (default) or 20×4 character module */
+  constructor(private host: DeviceHost, private cols = 16, private rows = 2) {}
 
   i2cAddress() {
     return Number(this.host.props().address) || 0x27;
@@ -95,10 +96,12 @@ export class Hd44780 implements DeviceModel {
 
   lines(): string[] {
     const out: string[] = [];
-    for (const base of [0x00, 0x40]) {
+    // DDRAM line starts: 16×2 → 0x00, 0x40; 20×4 → 0x00, 0x40, 0x14, 0x54
+    const bases = this.rows === 4 ? [0x00, 0x40, 0x14, 0x54] : [0x00, 0x40];
+    for (const base of bases) {
       let s = '';
-      for (let i = 0; i < 16; i++) {
-        const idx = base + ((((i + this.shift) % 40) + 40) % 40);
+      for (let i = 0; i < this.cols; i++) {
+        const idx = this.rows === 4 ? base + i + this.shift : base + ((((i + this.shift) % 40) + 40) % 40);
         const c = this.ddram[idx];
         s += c >= 0x20 && c < 0x7f ? String.fromCharCode(c) : c === 0xdf ? '°' : c < 8 ? '█' : ' ';
       }
