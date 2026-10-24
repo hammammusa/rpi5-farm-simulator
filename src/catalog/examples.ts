@@ -1046,3 +1046,5 @@ export function attachSim(get: () => Simulator) {
   simGetter = get;
 }
 const simRef = () => simGetter();
+/** the app simulator (attached by state/engine.ts) */
+export const currentSim = () => simGetter();

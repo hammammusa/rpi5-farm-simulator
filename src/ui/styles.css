@@ -2002,3 +2002,24 @@ p.err {
 .mode-toggle {
   white-space: nowrap;
 }
+/* ---- functional zones (Auto Arrange) */
+.zone-box {
+  fill: color-mix(in srgb, var(--accent2) 4%, transparent);
+  stroke: color-mix(in srgb, var(--accent2) 45%, transparent);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 4;
+}
+.zone-power .zone-box {
+  stroke: color-mix(in srgb, var(--danger) 55%, transparent);
+  fill: color-mix(in srgb, var(--danger) 4%, transparent);
+}
+.zone-controller .zone-box {
+  stroke: color-mix(in srgb, var(--accent) 55%, transparent);
+  fill: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.zone-label {
+  font: 700 11px var(--sans);
+  fill: var(--muted);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}

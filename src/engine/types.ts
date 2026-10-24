@@ -38,6 +38,17 @@ export interface Wire {
   route?: WireRoute;
   /** stroke width in workspace units (default 3) */
   width?: number;
+  /** bend points were produced by the router: they are re-routed when an end part moves */
+  auto?: boolean;
+}
+
+/** Labelled functional area drawn around a group of parts (Auto Arrange). */
+export interface Zone {
+  id: string;
+  label: string;
+  role: string;
+  /** component ids; the drawn box follows them when they move */
+  members: string[];
 }
 
 /** Workspace appearance saved with the project (also used by exports). */
@@ -82,6 +93,8 @@ export interface ProjectDoc {
   view?: ViewSettings;
   /** short description used in exported documentation */
   description?: string;
+  /** functional areas (large circuits) */
+  zones?: Zone[];
 }
 
 export type PinKind = 'power' | 'ground' | 'gpio' | 'digital' | 'analog' | 'passive' | 'terminal' | 'nc' | 'hole';

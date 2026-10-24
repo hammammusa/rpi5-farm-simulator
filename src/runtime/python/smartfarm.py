@@ -753,6 +753,18 @@ class Relay:
     def is_on(self):
         return bool(self._d.value)
 
+    @property
+    def value(self):
+        """1 while switched on (like gpiozero); assigning True/False switches it."""
+        return int(bool(self._d.value))
+
+    @value.setter
+    def value(self, on):
+        if on:
+            self._d.on()
+        else:
+            self._d.off()
+
     def run_for(self, seconds):
         self.on()
         try:

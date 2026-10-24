@@ -10,7 +10,7 @@ import { pathD, type Pt } from '../engine/routing';
 import type { ComponentInstance, ProjectDoc } from '../engine/types';
 import { sim } from '../state/engine';
 import { compBounds, viewOf } from '../state/store';
-import { CompNode, circuitBounds, wirePaths } from '../ui/Workspace';
+import { CompNode, ZoneBoxes, circuitBounds, wirePaths } from '../ui/Workspace';
 import { pinText } from './report';
 
 export interface ImageOptions {
@@ -156,6 +156,7 @@ function ExportCircuit({ doc, opts, selection, date }: { doc: ProjectDoc; opts: 
       </defs>
       {opts.background !== 'transparent' && <rect x={x0} y={y0} width={w} height={h} fill={BG[opts.background]} data-export="background" />}
       {opts.grid && <rect x={x0} y={y0} width={w} height={h} fill="url(#xgrid)" data-export="grid" />}
+      <ZoneBoxes zones={doc.zones} comps={comps} />
       {ordered.map((c) => (
         <CompNode key={c.id} c={{ ...c, locked: false }} sel={false} running={false} hl={null} inserted={inserted} vs={vs} ver={sim.version} />
       ))}

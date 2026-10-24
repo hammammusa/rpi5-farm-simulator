@@ -2,7 +2,7 @@ import { Component, memo, useCallback, useEffect, useMemo, useRef, useState, typ
 import { GRID, boundsOf, pinWorld, snap } from '../engine/geometry';
 import { getPart, hasPart, pinsOf, withDefaults } from '../engine/parts';
 import { PI5_HEADER } from '../engine/pi5';
-import type { ComponentInstance, PinRef, ViewSettings, Wire, WireRoute } from '../engine/types';
+import type { ComponentInstance, PinRef, ViewSettings, Wire, WireRoute, Zone } from '../engine/types';
 import { WIRE_COLORS, WIRE_WIDTHS } from '../engine/project';
 import { expandWire, findCrossings, pathD, type Pt } from '../engine/routing';
 import { sim, useSimVersion } from '../state/engine';
@@ -237,7 +237,8 @@ export function Workspace() {
   const resetView = useCallback(() => animateTo({ x: 20, y: 20, k: 1 }), [animateTo]);
 
   // fit when a different project is loaded (or an example replaces the circuit)
-  const fitKey = `${doc.id}:${doc.exampleId ?? ''}`;
+  const fitNonce = useApp((s) => s.fitNonce);
+  const fitKey = `${doc.id}:${doc.exampleId ?? ''}:${fitNonce}`;
   useEffect(() => {
     if (fitted.current !== fitKey) {
       fitted.current = fitKey;
@@ -529,6 +530,7 @@ export function Workspace() {
         st.select(withGroups(drag.add ? [...new Set([...st.selection, ...ids])] : ids));
       }
     } else if (drag?.kind === 'press') sim.pressButton(drag.comp, false);
+    else if (drag?.kind === 'move' && drag.started) st.rerouteAutoWires(drag.ids);
     // drag-to-wire: release over a different pin finishes the wire
     if (wiring && e.button === 0) {
       const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -712,6 +714,8 @@ export function Workspace() {
         { label: t('Fit to screen'), onClick: () => fit(), shortcut: 'F' },
         { label: t('Center circuit'), onClick: center },
         { label: t('Reset view'), onClick: resetView },
+        { label: t('Auto Arrange circuit'), onClick: () => st.autoArrange() },
+        { label: t('Auto Arrange + standard wire colours'), onClick: () => st.autoArrange({ recolor: true }) },
         { label: t('Auto-route all wires'), onClick: () => st.doc.wires.forEach((x) => st.autoRouteWire(x.id)) },
       ],
     });
@@ -787,6 +791,7 @@ export function Workspace() {
         </defs>
         {vs.showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`} className="ws-world">
+          <ZoneBoxes zones={doc.zones} comps={comps} />
           {ordered.map((c) => (
             <CompNode
               key={c.id}
@@ -874,6 +879,15 @@ export function Workspace() {
         <button onClick={resetView} title={t('Reset view (100%)')} aria-label={t('Reset view')} data-testid="reset-view">
           1:1
         </button>
+        <button
+          onClick={() => useApp.getState().autoArrange()}
+          title={t('Auto Arrange: place parts in functional groups and route every wire (Ctrl+Z undoes it)')}
+          aria-label={t('Auto Arrange circuit')}
+          data-testid="auto-arrange"
+          disabled={!comps.length}
+        >
+          ⊞ {t('Arrange')}
+        </button>
         <span className="sep" />
         <button onClick={() => useApp.getState().rotateSelected()} title={t('Rotate (R)')} aria-label={t('Rotate')} disabled={!selection.length}>
           ⟳
@@ -958,6 +972,33 @@ export function Workspace() {
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} testid={menu.testid} />}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- functional zones
+/** Labelled areas around groups of parts; each box follows its members. */
+export function ZoneBoxes({ zones, comps }: { zones?: Zone[]; comps: ComponentInstance[] }) {
+  if (!zones?.length) return null;
+  const byId = new Map(comps.map((c) => [c.id, c]));
+  return (
+    <g className="zones" pointerEvents="none">
+      {zones.map((z) => {
+        const bs = z.members.map((id) => byId.get(id)).filter((c): c is ComponentInstance => !!c && hasPart(c.type)).map(compBounds);
+        if (!bs.length) return null;
+        const x0 = Math.min(...bs.map((b) => b.x0)) - 16;
+        const y0 = Math.min(...bs.map((b) => b.y0)) - 44;
+        const x1 = Math.max(...bs.map((b) => b.x1)) + 16;
+        const y1 = Math.max(...bs.map((b) => b.y1)) + 14;
+        return (
+          <g key={z.id} className={`zone zone-${z.role}`} data-zone={z.role}>
+            <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} rx={10} className="zone-box" />
+            <text x={x0 + 10} y={y0 + 14} className="zone-label">
+              {z.label}
+            </text>
+          </g>
+        );
+      })}
+    </g>
   );
 }
 

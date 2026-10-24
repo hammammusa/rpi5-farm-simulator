@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`layout snapshot (default layouts are stored and reviewed) > matches the reviewed default layouts 1`] = `
+{
+  "gpio-beep-pattern": "pi@40,140,0 bz@530,90,0",
+  "gpio-binary-counter": "pi@40,140,0 r_b0@530,90,0 b0@720,90,0 r_b1@530,170,0 b1@720,210,0 r_b2@530,260,0 b2@720,340,0 r_b3@530,340,0 b3@720,460,0",
+  "gpio-breathing-led": "pi@40,140,0 r_led@530,90,0 led@720,90,0",
+  "gpio-cpu-temp-alert": "pi@40,140,0 r_ok@530,90,0 ok@720,90,0 r_hot@530,170,0 hot@720,210,0",
+  "gpio-dip-config": "pi@40,140,0 dip@530,90,0 r_led@530,190,0 led@720,90,0",
+  "gpio-led-chaser": "pi@-20,110,90 r_l1@440,90,0 l1@650,90,0 r_l2@440,170,0 l2@650,210,0 r_l3@440,260,0 l3@650,340,0 r_l4@440,340,0 l4@650,460,0 r_l5@440,420,0 l5@650,580,0 r_l6@440,510,0 l6@650,710,0",
+  "gpio-lgpio-blink": "pi@40,140,0 r_led@530,190,0 led@720,90,0 btn@530,90,0",
+  "gpio-mode-switch": "pi@40,140,0 sw@530,90,0 r_green@530,190,0 green@720,90,0 r_red@530,280,0 red@720,210,0",
+  "gpio-pedestrian-crossing": "pi@40,140,0 r_red@530,190,0 red@720,90,0 r_amber@530,280,0 amber@720,210,0 r_green@530,360,0 green@720,340,0 r_walk@530,440,0 walk@720,460,0 btn@530,90,0",
+  "gpio-reaction-game": "pi@40,140,0 r_led@530,190,0 led@720,90,0 btn@530,90,0",
+  "gpio-rgb-mixer": "pi@40,140,0 rgb@720,90,0 r_rgbR@530,90,0 r_rgbG@530,170,0 r_rgbB@530,260,0",
+  "gpio-sos": "pi@40,140,0 r_led@530,90,0 led@720,90,0",
+  "gpio-toggle-button": "pi@40,140,0 r_led@530,190,0 led@720,90,0 btn@530,90,0",
+}
+`;

@@ -1,5 +1,6 @@
 // Application state (zustand). The project document lives here; the simulator
 // is notified of every document change. Undo/redo snapshots the editable parts.
+import { arrangeCircuit, routeWires, type ArrangeOptions } from '../engine/layout';
 import { create } from 'zustand';
 import { defaultView, newProject, uid } from '../engine/project';
 import { getPart, hasPart, pinsOf, withDefaults } from '../engine/parts';
@@ -25,7 +26,7 @@ export interface PyErrorState {
   traceback: string;
 }
 
-type Snapshot = Pick<ProjectDoc, 'components' | 'wires' | 'nextion' | 'farm' | 'files' | 'mainFile'>;
+type Snapshot = Pick<ProjectDoc, 'components' | 'wires' | 'nextion' | 'farm' | 'files' | 'mainFile' | 'zones'>;
 
 interface AppState {
   doc: ProjectDoc;
@@ -58,6 +59,8 @@ interface AppState {
   /** Beginner shows hints and explanations; Advanced shows protocol/engine detail. Never changes results. */
   mode: 'beginner' | 'advanced';
   exportOpen: boolean;
+  /** incremented to ask the workspace to fit the circuit on screen */
+  fitNonce: number;
 
   setDoc(doc: ProjectDoc, opts?: { history?: boolean; markDirty?: boolean }): void;
   edit(fn: (d: ProjectDoc) => ProjectDoc, history?: boolean): void;
@@ -100,6 +103,10 @@ interface AppState {
   rename(name: string): void;
   setDescription(text: string): void;
   setExportOpen(open: boolean): void;
+  /** Auto Arrange: functional layout + orthogonal routing (one undo step) */
+  autoArrange(opts?: ArrangeOptions): void;
+  /** re-route the router-made wires of parts that were moved */
+  rerouteAutoWires(ids: string[]): void;
   setView(patch: Partial<ViewSettings>): void;
   copySelection(): number;
   paste(at?: Pt): void;
@@ -137,7 +144,7 @@ export function viewOf(doc: ProjectDoc): ViewSettings {
 
 let clipboard: { components: ComponentInstance[]; wires: Wire[] } | null = null;
 
-const snap = (d: ProjectDoc): Snapshot => ({ components: d.components, wires: d.wires, nextion: d.nextion, farm: d.farm, files: d.files, mainFile: d.mainFile });
+const snap = (d: ProjectDoc): Snapshot => ({ components: d.components, wires: d.wires, nextion: d.nextion, farm: d.farm, files: d.files, mainFile: d.mainFile, zones: d.zones });
 
 function readPref<T extends string>(key: string, def: T): T {
   try {
@@ -185,6 +192,7 @@ export const useApp = create<AppState>((set, get) => ({
   highlightNet: null,
   mode: readPref<'beginner' | 'advanced'>('rpi5sim.mode', 'beginner'),
   exportOpen: false,
+  fitNonce: 0,
 
   setDoc(doc, opts = {}) {
     const st = get();
@@ -301,7 +309,19 @@ export const useApp = create<AppState>((set, get) => ({
     set({ selectedWire: id, selection: [] });
   },
   updateWire(id, patch) {
-    get().edit((d) => ({ ...d, wires: d.wires.map((w) => (w.id === id ? { ...w, ...patch } : w)) }));
+    // a hand-edited path is the user's: the router no longer touches it
+    const p = 'points' in patch && !('auto' in patch) ? { ...patch, auto: false } : patch;
+    get().edit((d) => ({ ...d, wires: d.wires.map((w) => (w.id === id ? { ...w, ...p } : w)) }));
+  },
+  autoArrange(opts = {}) {
+    get().edit((d) => arrangeCircuit(d, opts));
+    set({ fitNonce: get().fitNonce + 1 });
+  },
+  rerouteAutoWires(ids) {
+    const d = get().doc;
+    const moved = new Set(ids);
+    const which = new Set(d.wires.filter((w) => w.auto && (moved.has(w.from.comp) || moved.has(w.to.comp))).map((w) => w.id));
+    if (which.size) get().edit((doc) => routeWires(doc, which), false);
   },
   deleteWire(id) {
     get().edit((d) => ({ ...d, wires: d.wires.filter((w) => w.id !== id) }));
