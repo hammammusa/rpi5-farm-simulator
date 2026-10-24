@@ -41,7 +41,13 @@ test('example 1 from the UI: run, blink, rewire with the mouse, stop', async ({ 
 
   // delete the GPIO17 wire with the mouse + Delete key → LED goes dark
   const wire = await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().doc.wires.find((w: any) => w.from.pin === 'P11').id);
-  await page.locator(`[data-testid="wire-${wire}"] .wire-hit`).click({ force: true });
+  // click a point that lies on the wire (the middle of its path, not of its bounding box)
+  const onWire = await page.locator(`[data-testid="wire-${wire}"] .wire-hit`).evaluate((el: SVGPathElement) => {
+    const p = el.getPointAtLength(el.getTotalLength() / 2);
+    const m = el.getScreenCTM()!;
+    return { x: p.x * m.a + p.y * m.c + m.e, y: p.x * m.b + p.y * m.d + m.f };
+  });
+  await page.mouse.click(onWire.x, onWire.y);
   await page.keyboard.press('Delete');
   await page.waitForTimeout(400);
   expect((await samples(page, 8)).some((x) => x)).toBe(false);
