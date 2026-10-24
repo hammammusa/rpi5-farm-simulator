@@ -637,16 +637,36 @@ def _reset_state():
 
 
 def _shutdown_devices():
-    for name, m in list(sys.modules.items()):
-        f = getattr(m, '__file__', None) or ''
-        if f.startswith('/lib/sim/') and hasattr(m, '_sim_shutdown'):
-            try:
-                m._sim_shutdown()
-            except BaseException:
-                pass
+    # Stop answers the pending call with KeyboardInterrupt *and* sets Pyodide's interrupt
+    # flag, so a second KeyboardInterrupt can arrive while we clean up. Absorb it and
+    # finish the cleanup instead of letting it escape as an internal error.
+    for _ in range(3):
+        try:
+            for name, m in list(sys.modules.items()):
+                f = getattr(m, '__file__', None) or ''
+                if f.startswith('/lib/sim/') and hasattr(m, '_sim_shutdown'):
+                    try:
+                        m._sim_shutdown()
+                    except Exception:
+                        pass
+            return
+        except KeyboardInterrupt:
+            continue
 
 
 def run_main(path):
+    # a late Stop interrupt must end the run as "stopped", never as an internal error
+    try:
+        return _run_main(path)
+    except KeyboardInterrupt:
+        try:
+            _shutdown_devices()
+        except KeyboardInterrupt:
+            pass
+        return json.dumps({'status': 'stopped', 'error': None})
+
+
+def _run_main(path):
     import runpy
 
     _reset_state()
@@ -676,7 +696,7 @@ def run_main(path):
     finally:
         try:
             sys.stdout.flush()
-        except Exception:
+        except BaseException:
             pass
         _shutdown_devices()
     return json.dumps({'status': status, 'error': error})

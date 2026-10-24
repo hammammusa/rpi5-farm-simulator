@@ -249,8 +249,13 @@ import _simcore
 _simcore.run_main(_sim_main)
 `);
   } catch (e: any) {
-    result = JSON.stringify({ status: 'error', error: { type: 'InternalError', message: String(e?.message ?? e), traceback: String(e?.message ?? e) } });
+    const text = String(e?.message ?? e);
+    // a Stop interrupt that slipped past run_main is still just a stop
+    result = /KeyboardInterrupt\s*$/.test(text.trim()) || Atomics.load(ctl, CTL.STOP)
+      ? JSON.stringify({ status: 'stopped', error: null })
+      : JSON.stringify({ status: 'error', error: { type: 'InternalError', message: text, traceback: text } });
   }
+  interrupt[0] = 0;
   flush();
   const res = JSON.parse(String(result));
   // sync back files created/modified by the program (e.g. settings.json, logs)
