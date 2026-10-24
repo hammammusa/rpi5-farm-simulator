@@ -58,7 +58,7 @@ export function roleOf(type: string): Role {
 }
 
 // ------------------------------------------------------------------ geometry helpers
-const bodyOf = (c: ComponentInstance): Rect => {
+export const bodyOf = (c: ComponentInstance): Rect => {
   const m = getPart(c.type);
   return boundsOf(c, m.w, m.h);
 };
@@ -216,6 +216,23 @@ export function arrangeCircuit(doc: ProjectDoc, opts: ArrangeOptions = {}): Proj
       attachedTo.set(n.id, o.id);
     }
   }
+  // passives between the Pi and one part in the same column (a divider on an echo line, a
+  // pull-up between a GPIO and a module) stay next to that part instead of in a passive group
+  const isPart = (id: string) => {
+    const r = nodes.get(id)!.role;
+    return r !== 'controller' && r !== 'passive' && r !== 'power';
+  };
+  for (const n of nodes.values()) {
+    if (n.role !== 'passive' || n.members.length > 1 || attachedTo.has(n.id)) continue;
+    const partners = new Set<string>();
+    for (const id of adj.get(n.id) ?? []) {
+      if (isPart(id)) partners.add(id);
+      else if (nodes.get(id)!.role === 'passive') for (const id2 of adj.get(id) ?? []) if (isPart(id2)) partners.add(id2);
+    }
+    if (partners.size !== 1) continue;
+    const o = nodes.get([...partners][0])!;
+    if (o.layer > 0 && o.layer === n.layer) attachedTo.set(n.id, o.id);
+  }
   maxLayer = Math.max(0, ...[...nodes.values()].map((n) => n.layer));
   // supplies go at the foot of the column they feed most (short supply wires to the loads)
   for (const n of nodes.values()) {
@@ -292,9 +309,11 @@ export function arrangeCircuit(doc: ProjectDoc, opts: ArrangeOptions = {}): Proj
       placedLeft.add(n.id);
       y += LABEL_SPACE + n.h + V_GAP;
       colW = Math.max(colW, n.w);
+      // an attached passive belongs to its neighbour's group
+      const role = attachedTo.has(n.id) ? nodes.get(attachedTo.get(n.id)!)!.role : n.role;
       const last = col[col.length - 1];
-      if (last && last.role === n.role) last.ids.push(n.id);
-      else col.push({ role: n.role, ids: [n.id] });
+      if (last && last.role === role) last.ids.push(n.id);
+      else col.push({ role, ids: [n.id] });
     }
     columns.push(col);
     colX += colW + gapAfter(placedLeft);
@@ -568,6 +587,45 @@ function routeOne(G: Grid, a: Pt, b: Pt, own: Rect[], boards: Rect[], net: numbe
   return cells;
 }
 
+/** mark the cells of an orthogonal track as used by `net` */
+function occupyTrack(G: Grid, pts: Pt[], net: number) {
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[i + 1];
+    if (p.x !== q.x && p.y !== q.y) continue;
+    const arr = p.y === q.y ? G.occH : G.occV;
+    const n = Math.max(Math.abs(q.x - p.x), Math.abs(q.y - p.y)) / GRID;
+    for (let k = 0; k <= n; k++) {
+      const x = Math.round((p.x + ((q.x - p.x) * k) / (n || 1)) / GRID) - G.minX;
+      const y = Math.round((p.y + ((q.y - p.y) * k) / (n || 1)) / GRID) - G.minY;
+      if (x >= 0 && y >= 0 && x < G.W && y < G.H) occupy(arr, y * G.W + x, net);
+    }
+  }
+}
+
+/** how badly a track meets other nets: 1 per crossing cell, 4 per cell run along another net */
+function trackCrossings(G: Grid, pts: Pt[], net: number): number {
+  const mine = net + 1;
+  const other = (v: number) => v !== 0 && v !== mine;
+  let n = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[i + 1];
+    if (p.x !== q.x && p.y !== q.y) continue;
+    const horiz = p.y === q.y;
+    const steps = Math.max(Math.abs(q.x - p.x), Math.abs(q.y - p.y)) / GRID;
+    for (let k = 1; k < steps; k++) {
+      const x = Math.round((p.x + ((q.x - p.x) * k) / steps) / GRID) - G.minX;
+      const y = Math.round((p.y + ((q.y - p.y) * k) / steps) / GRID) - G.minY;
+      if (x < 0 || y < 0 || x >= G.W || y >= G.H) continue;
+      const c = y * G.W + x;
+      if (other(horiz ? G.occV[c] : G.occH[c])) n++;
+      if (other(horiz ? G.occH[c] : G.occV[c])) n += 4;
+    }
+  }
+  return n;
+}
+
 /**
  * Route wires orthogonally. `ids` limits routing to those wires (the others stay as
  * obstacles); by default every wire is routed.
@@ -595,23 +653,14 @@ export function routeWires(doc: ProjectDoc, ids?: Set<string>): ProjectDoc {
   const netOf = (w: Wire) => nl.netOf(w.from);
   // wires that are kept as they are still occupy their track
   const ends = (w: Wire) => [pinPoint(doc, w.from.comp, w.from.pin), pinPoint(doc, w.to.comp, w.to.pin)] as const;
+  const trackOf = (w: Wire): Pt[] | null => {
+    const [a, b] = ends(w);
+    return a && b ? [a, ...(w.points ?? []), b] : null;
+  };
   for (const w of doc.wires) {
     if (ids && ids.has(w.id)) continue;
-    const [a, b] = ends(w);
-    if (!a || !b) continue;
-    const pts = [a, ...(w.points ?? []), b];
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const p = pts[i];
-      const q = pts[i + 1];
-      if (p.x !== q.x && p.y !== q.y) continue;
-      const arr = p.y === q.y ? G.occH : G.occV;
-      const n = Math.max(Math.abs(q.x - p.x), Math.abs(q.y - p.y)) / GRID;
-      for (let k = 0; k <= n; k++) {
-        const x = Math.round((p.x + ((q.x - p.x) * k) / (n || 1)) / GRID) - G.minX;
-        const y = Math.round((p.y + ((q.y - p.y) * k) / (n || 1)) / GRID) - G.minY;
-        if (x >= 0 && y >= 0 && x < G.W && y < G.H) occupy(arr, y * G.W + x, netOf(w));
-      }
-    }
+    const pts = trackOf(w);
+    if (pts) occupyTrack(G, pts, netOf(w));
   }
   // short wires first: they have the fewest alternatives
   const todo = doc.wires
@@ -620,16 +669,36 @@ export function routeWires(doc: ProjectDoc, ids?: Set<string>): ProjectDoc {
     .filter((x) => x.e[0] && x.e[1])
     .sort((p, q) => Math.abs(p.e[0]!.x - p.e[1]!.x) + Math.abs(p.e[0]!.y - p.e[1]!.y) - (Math.abs(q.e[0]!.x - q.e[1]!.x) + Math.abs(q.e[0]!.y - q.e[1]!.y)) || p.w.id.localeCompare(q.w.id));
   const routed = new Map<string, Wire>();
-  for (const { w, e } of todo) {
-    const [a, b] = e as [Pt, Pt];
+  const route = (w: Wire, a: Pt, b: Pt): Wire => {
     const own = [w.from.comp, w.to.comp].map((id) => bodies.get(id)).filter((r): r is Rect => !!r && !boards.includes(r));
     const cells = routeOne(G, a, b, own, boards, netOf(w));
-    if (!cells) {
-      routed.set(w.id, { ...w, points: [], route: 'orthogonal', auto: true });
-      continue;
+    return cells ? { ...w, points: simplify([a, ...cells, b]).slice(1, -1), route: 'orthogonal', auto: true } : { ...w, points: [], route: 'orthogonal', auto: true };
+  };
+  for (const { w, e } of todo) routed.set(w.id, route(w, e[0]!, e[1]!));
+  // improvement pass for a full arrange: re-route each wire with all the others in place
+  // and keep the new track when it crosses fewer wires
+  if (!ids && todo.length >= 8) {
+    const current = (w: Wire) => routed.get(w.id) ?? w;
+    for (let pass = 0; pass < 2; pass++) {
+      let changed = false;
+      for (const { w, e } of todo) {
+        G.occH.fill(0);
+        G.occV.fill(0);
+        for (const o of doc.wires) {
+          if (o.id === w.id) continue;
+          const pts = trackOf(current(o));
+          if (pts) occupyTrack(G, pts, netOf(o));
+        }
+        const before = trackCrossings(G, trackOf(current(w))!, netOf(w));
+        if (before === 0) continue;
+        const next = route(w, e[0]!, e[1]!);
+        if (next.points!.length && trackCrossings(G, trackOf(next)!, netOf(w)) < before) {
+          routed.set(w.id, next);
+          changed = true;
+        }
+      }
+      if (!changed) break;
     }
-    const pts = simplify([a, ...cells, b]);
-    routed.set(w.id, { ...w, points: pts.slice(1, -1), route: 'orthogonal', auto: true });
   }
   return { ...doc, wires: doc.wires.map((w) => routed.get(w.id) ?? w) };
 }
@@ -687,6 +756,7 @@ export function layoutQuality(doc: ProjectDoc): LayoutQuality {
   const comps = doc.components.filter((c) => hasPart(c.type));
   const net = buildNetlist(doc);
   const inserted = new Set(net.insertions.map((i) => i.comp));
+  const boardOf = new Map(net.insertions.map((i) => [i.comp, i.board]));
   const bodies = comps.map((c) => ({ c, b: bodyOf(c) }));
   const overlaps: [string, string][] = [];
   for (let i = 0; i < bodies.length; i++)
@@ -695,6 +765,8 @@ export function layoutQuality(doc: ProjectDoc): LayoutQuality {
       const B = bodies[j];
       // a part plugged into a breadboard is meant to sit on it
       if ((A.c.type === 'breadboard' && inserted.has(B.c.id)) || (B.c.type === 'breadboard' && inserted.has(A.c.id))) continue;
+      // two parts plugged into the same breadboard sit where its holes put them (often in one strip)
+      if (boardOf.has(A.c.id) && boardOf.get(A.c.id) === boardOf.get(B.c.id)) continue;
       if (A.b.x0 < B.b.x1 && B.b.x0 < A.b.x1 && A.b.y0 < B.b.y1 && B.b.y0 < A.b.y1) overlaps.push([A.c.id, B.c.id]);
     }
   const paths: { id: string; pts: Pt[] }[] = [];

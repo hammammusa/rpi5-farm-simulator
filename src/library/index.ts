@@ -19,6 +19,8 @@ import { FARMING_EXAMPLES } from './farming';
 import { ENERGY_EXAMPLES } from './energy';
 import { LOGIC_EXAMPLES } from './logic';
 import { DATA_EXAMPLES } from './data';
+import { CHALLENGE_EXAMPLES } from './challenges';
+import { ADVANCED_EXAMPLES } from './advanced';
 
 export interface LibraryEntry {
   id: string;
@@ -103,7 +105,7 @@ function fromSpec(e: LibExample): LibraryEntry {
   };
 }
 
-const SPECS: LibExample[] = [...GPIO_EXAMPLES, ...SENSOR_EXAMPLES, ...MOTOR_EXAMPLES, ...DISPLAY_EXAMPLES, ...COMMS_EXAMPLES, ...SMARTHOME_EXAMPLES, ...SECURITY_EXAMPLES, ...ROBOTICS_EXAMPLES, ...INDUSTRIAL_EXAMPLES, ...FARMING_EXAMPLES, ...ENERGY_EXAMPLES, ...LOGIC_EXAMPLES, ...DATA_EXAMPLES];
+const SPECS: LibExample[] = [...GPIO_EXAMPLES, ...SENSOR_EXAMPLES, ...MOTOR_EXAMPLES, ...DISPLAY_EXAMPLES, ...COMMS_EXAMPLES, ...SMARTHOME_EXAMPLES, ...SECURITY_EXAMPLES, ...ROBOTICS_EXAMPLES, ...INDUSTRIAL_EXAMPLES, ...FARMING_EXAMPLES, ...ENERGY_EXAMPLES, ...LOGIC_EXAMPLES, ...DATA_EXAMPLES, ...CHALLENGE_EXAMPLES, ...ADVANCED_EXAMPLES];
 
 export const LIBRARY: LibraryEntry[] = [...EXAMPLES.map(fromLegacy), ...SPECS.map(fromSpec)];
 LIBRARY.forEach((e, i) => (e.n = i + 1));
@@ -121,3 +123,6 @@ export function libraryTypes(): { type: string; name: string; count: number }[] 
 
 export { CATEGORIES } from './dsl';
 export type { Cat, Level, Bi } from './dsl';
+
+// handle for automated browser checks (screenshots of every example's default layout)
+(globalThis as any).__rpi5lib = { LIBRARY, libraryEntry };

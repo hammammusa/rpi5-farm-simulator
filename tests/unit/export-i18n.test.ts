@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { AR } from '../../src/i18n';
 
-const FILES = ['src/export/report.ts', 'src/export/exporter.ts', 'src/ui/ExportDialog.tsx', 'src/ui/Monitors.tsx', 'src/ui/Problems.tsx', 'src/ui/ProjectsTab.tsx', 'src/ui/Dock.tsx', 'src/ui/TopBar.tsx', 'src/state/engine.ts'];
+const FILES = ['src/export/report.ts', 'src/export/exporter.ts', 'src/ui/ExportDialog.tsx', 'src/ui/Monitors.tsx', 'src/ui/Problems.tsx', 'src/ui/ProjectsTab.tsx', 'src/ui/Dock.tsx', 'src/ui/TopBar.tsx', 'src/state/engine.ts', 'src/ui/learn/LearnTab.tsx', 'src/ui/Workspace.tsx'];
 
 export function exportStrings(): string[] {
   const out = new Set<string>();

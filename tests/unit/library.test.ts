@@ -11,6 +11,7 @@ import { migrate } from '../../src/state/persist';
 import { buildReport } from '../../src/export/report';
 import { getPart, hasPart, pinsOf, withDefaults } from '../../src/engine/parts';
 import type { ProjectDoc } from '../../src/engine/types';
+import { buildNetlist } from '../../src/engine/netlist';
 import { Harness } from './pyharness';
 
 async function runExample(e: LibExample, doc: ProjectDoc) {
@@ -38,12 +39,27 @@ async function runExample(e: LibExample, doc: ProjectDoc) {
   return { r, out: r.stdout + r.stderr, verdict, errors: [...errors].filter((c) => !(t.allowErrors ?? []).includes(c)) };
 }
 
-/** deterministic scramble of all positions (what a messy user circuit looks like) */
+/** deterministic scramble of all positions (what a messy user circuit looks like); parts plugged
+ * into a breadboard move with it so they stay in their holes */
 function scramble(d: ProjectDoc): ProjectDoc {
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  return { ...d, components: d.components.map((c) => ({ ...c, x: Math.round(rnd() * 1600 / 10) * 10, y: Math.round(rnd() * 1000 / 10) * 10 })), wires: d.wires.map((w) => ({ ...w, points: undefined, route: undefined })) };
+  const boardOf = new Map(buildNetlist(d).insertions.map((i) => [i.comp, i.board]));
+  const moved = new Map<string, { x: number; y: number }>();
+  for (const c of d.components) if (!boardOf.has(c.id)) moved.set(c.id, { x: Math.round((rnd() * 1600) / 10) * 10, y: Math.round((rnd() * 1000) / 10) * 10 });
+  const at = (c: ProjectDoc['components'][number]) => {
+    const b = boardOf.get(c.id);
+    if (!b) return moved.get(c.id)!;
+    const board = d.components.find((x) => x.id === b)!;
+    const m = moved.get(b)!;
+    return { x: c.x + m.x - board.x, y: c.y + m.y - board.y };
+  };
+  return { ...d, components: d.components.map((c) => ({ ...c, ...at(c) })), wires: d.wires.map((w) => ({ ...w, points: undefined, route: undefined })) };
 }
+
+/** Wire-to-wire crossings allowed in a default layout. Power and ground wires from the Pi to
+ * every part necessarily cross the signal wires, so the allowance grows with the circuit. */
+const crossingLimit = (wires: number) => Math.max(6, Math.round(wires * (wires >= 40 ? 6 : wires >= 25 ? 4.5 : 3.5)));
 
 describe('example library', () => {
   it('holds at least 100 runnable examples with unique ids, in every category', () => {
@@ -86,8 +102,8 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
     const q = layoutQuality(doc);
     expect(q.overlaps).toEqual([]);
     expect(q.dangling).toEqual([]);
-    expect(q.overBodies.length, JSON.stringify(q.overBodies)).toBeLessThanOrEqual(Math.floor(doc.wires.length / 20));
-    expect(q.crossings).toBeLessThanOrEqual(Math.max(6, Math.round(doc.wires.length * 3.5)));
+    expect(q.overBodies, JSON.stringify(q.overBodies)).toEqual([]);
+    expect(q.crossings).toBeLessThanOrEqual(crossingLimit(doc.wires.length));
   });
 
   it('10–11 save/reopen keeps the circuit; the wiring table matches it', () => {
@@ -108,6 +124,34 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
     const { out } = await runExample(e, arranged);
     expect(out).toMatch(e.test.expect);
   }, 90_000);
+});
+
+// the 20 guided examples: their programs and scenario checks run in examples.test.ts and the
+// browser tests; here their default layout, save/reopen, report and Auto Arrange are checked
+describe.each(LIBRARY.filter((e) => e.legacy).map((e) => [e.id, e] as const))('%s', (_id, entry) => {
+  const doc = entry.build();
+
+  it('7–9 default layout: no overlapping parts, no dangling wires, wires keep off other parts', () => {
+    const q = layoutQuality(doc);
+    expect(q.overlaps).toEqual([]);
+    expect(q.dangling).toEqual([]);
+    expect(q.overBodies, JSON.stringify(q.overBodies)).toEqual([]);
+    expect(q.crossings).toBeLessThanOrEqual(crossingLimit(doc.wires.length));
+  });
+
+  it('10–11 save/reopen keeps the circuit; the wiring table matches it', () => {
+    const back = migrate(JSON.parse(JSON.stringify(doc)));
+    expect(back.components).toEqual(doc.components);
+    expect(back.wires).toEqual(doc.wires);
+    const rep = buildReport(doc);
+    expect(rep.wiring.filter((x) => !x.wireId.startsWith('bb-')).map((x) => x.wireId).sort()).toEqual(doc.wires.map((w) => w.id).sort());
+  });
+
+  it('12 Auto Arrange of a scrambled copy keeps every connection', () => {
+    const arranged = arrangeCircuit(scramble(doc));
+    expect(netSignature(arranged)).toEqual(netSignature(doc));
+    expect(arranged.files).toEqual(doc.files);
+  });
 });
 
 describe('layout snapshot (default layouts are stored and reviewed)', () => {

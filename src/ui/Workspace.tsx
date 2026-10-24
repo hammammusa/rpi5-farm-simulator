@@ -214,10 +214,15 @@ export function Workspace() {
       const d = useApp.getState().doc;
       const comps = d.components.filter((c) => hasPart(c.type));
       if (!comps.length) return;
-      const b = circuitBounds(comps, wirePaths(d));
+      const raw = circuitBounds(comps, wirePaths(d));
+      // zone frames and labels reach a little beyond the parts
+      const pad = d.zones?.length ? 24 : 0;
+      const b = { x0: raw.x0 - pad, y0: raw.y0 - pad, x1: raw.x1 + pad, y1: raw.y1 + pad };
       const r = svg.getBoundingClientRect();
-      const k = Math.max(0.15, Math.min(2.5, Math.min((r.width - 60) / (b.x1 - b.x0 || 1), (r.height - 70) / (b.y1 - b.y0 || 1))));
-      const v = { k, x: (r.width - (b.x1 - b.x0) * k) / 2 - b.x0 * k, y: (r.height - (b.y1 - b.y0) * k) / 2 - b.y0 * k };
+      // the floating toolbar covers the top of the canvas
+      const TOP = 56;
+      const k = Math.max(0.15, Math.min(2.5, Math.min((r.width - 60) / (b.x1 - b.x0 || 1), (r.height - TOP - 30) / (b.y1 - b.y0 || 1))));
+      const v = { k, x: (r.width - (b.x1 - b.x0) * k) / 2 - b.x0 * k, y: TOP + (r.height - TOP - 10 - (b.y1 - b.y0) * k) / 2 - b.y0 * k };
       if (smooth) animateTo(v);
       else setView(v);
     },
