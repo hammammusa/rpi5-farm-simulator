@@ -251,3 +251,28 @@ for (const cat of CATS) {
     expect(errors).toEqual([]);
   });
 }
+
+test('an opened example keeps running until Stop and keeps reacting to the button (reaction game)', async ({ page }) => {
+  const errors = await boot(page);
+  await loadLibrary(page);
+  await page.locator('.learn-list [data-id="gpio-reaction-game"]').click();
+  await page.getByTestId('open-example').click();
+  await page.getByTestId('run').click();
+  await expect(page.getByTestId('runtime-state')).toContainText('Running');
+  // nobody presses: earlier versions ended here after one timed-out round
+  await page.waitForTimeout(8000);
+  await expect(page.getByTestId('runtime-state')).toContainText('Running');
+  await expect(page.getByTestId('terminal')).toContainText('too slow');
+  // press the real button part in the workspace while its LED is lit
+  await page.waitForFunction(() => ((window as any).__rpi5sim.sim.vis.get('led')?.brightness ?? 0) > 0.2, null, { timeout: 10_000 });
+  const box = (await page.locator('[data-testid="comp-btn"] .press-target').first().boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await expect(page.getByTestId('terminal')).toContainText(/reaction time: \d\.\d\d s \(best/);
+  await expect(page.getByTestId('runtime-state')).toContainText('Running');
+  await page.getByTestId('stop').click();
+  await expect(page.getByTestId('runtime-state')).toContainText('Ready', { timeout: 5000 });
+  expect(errors).toEqual([]);
+});
