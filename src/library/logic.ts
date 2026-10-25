@@ -14,7 +14,7 @@ export const LOGIC_EXAMPLES: LibExample[] = [
       minutes: 20,
       title: ['Logic gate explorer (AND, OR, XOR)', 'مستكشف البوابات المنطقية (AND وOR وXOR)'],
       goal: ['Drive the same two inputs into three real gate chips and compare with Python’s operators.', 'إدخال المدخلين نفسيهما إلى ثلاث شرائح بوابات حقيقية ومقارنة النتائج بعمليات بايثون.'],
-      result: ['A truth table is printed; every chip output matches a & b, a | b and a ^ b.', 'يُطبع جدول الحقيقة، وتطابق مخارج الشرائح العمليات a & b وa | b وa ^ b.'],
+      result: ['The truth table is stepped through again and again (half a second per row) and each row is compared with a & b, a | b and a ^ b, until you press Stop.', 'يُمرّ على جدول الحقيقة مرة بعد مرة (نصف ثانية لكل صف) ويُقارن كل صف مع a & b وa | b وa ^ b، حتى تضغط إيقاف.'],
       tryIt: ['Read the table and compare each row with the gate symbol.', 'اقرأ الجدول وقارن كل صف برمز البوابة.'],
       modify: ['Add a NOT gate (74HC04) on input A.', 'أضف بوابة NOT (74HC04) على المدخل A.'],
       explain: ['The two GPIO outputs feed all three chips in parallel; each chip output goes back to its own GPIO input.', 'يغذي مخرجا GPIO الشرائح الثلاث على التوازي، ويعود مخرج كل شريحة إلى مدخل GPIO خاص به.'],
@@ -23,18 +23,20 @@ from time import sleep
 
 a, b = OutputDevice(17), OutputDevice(27)
 AND, OR, XOR = DigitalInputDevice(22), DigitalInputDevice(23), DigitalInputDevice(24)
-print(" A B | AND OR XOR | python")
-ok = True
-for va in (0, 1):
-    for vb in (0, 1):
-        a.value, b.value = va, vb
-        sleep(0.05)
-        row = (AND.value, OR.value, XOR.value)
-        ok &= row == (va & vb, va | vb, va ^ vb)
-        print(f" {va} {vb} |  {row[0]}   {row[1]}   {row[2]} | {'match' if row == (va & vb, va | vb, va ^ vb) else 'DIFFERENT'}")
-print("all rows match:", ok)
+while True:                      # runs until you press Stop
+    print(" A B | AND OR XOR | python")
+    ok = True
+    for va in (0, 1):
+        for vb in (0, 1):
+            a.value, b.value = va, vb
+            sleep(0.5)
+            row = (AND.value, OR.value, XOR.value)
+            match = row == (va & vb, va | vb, va ^ vb)
+            ok &= match
+            print(f" {va} {vb} |  {row[0]}   {row[1]}   {row[2]} | {'match' if match else 'DIFFERENT'}")
+    print("all rows match:", ok)
 `,
-      test: { expect: /all rows match: True/ },
+      test: { expect: /all rows match: True/, seconds: 3 },
     },
     (c) => {
       gate(c, 'and', 'hc08', '74HC08 AND', 'pi.P15');
@@ -50,7 +52,7 @@ print("all rows match:", ok)
       minutes: 20,
       title: ['Half adder from logic chips', 'نصف جامع من شرائح منطقية'],
       goal: ['Add two bits in hardware: XOR gives the sum, AND gives the carry.', 'جمع بتين بالعتاد: XOR تعطي المجموع وAND تعطي الحمل.'],
-      result: ['For 1 + 1 the sum LED is off and the carry LED is on (binary 10).', 'عند 1 + 1 ينطفئ LED المجموع ويضيء LED الحمل (العدد الثنائي 10).'],
+      result: ['The inputs step through 0+0, 0+1, 1+0 and 1+1 again and again; for 1 + 1 the sum LED is off and the carry LED is on (binary 10). It runs until you press Stop.', 'تمر المداخل على 0+0 و0+1 و1+0 و1+1 مرة بعد مرة، وعند 1 + 1 ينطفئ LED المجموع ويضيء LED الحمل (العدد الثنائي 10)، ويستمر حتى تضغط إيقاف.'],
       tryIt: ['Watch the sum and carry LEDs for each input pair.', 'راقب LEDَي المجموع والحمل لكل زوج من المدخلات.'],
       modify: ['Chain two half adders and an OR gate into a full adder.', 'اربط نصفي جامع مع بوابة OR لتصنع جامعاً كاملاً.'],
       explain: ['Sum = A XOR B, Carry = A AND B. The chip outputs drive LEDs directly through resistors.', 'المجموع = A XOR B، والحمل = A AND B، وتقود مخارج الشرائح الـ LEDs مباشرة عبر مقاومات.'],
@@ -58,12 +60,13 @@ print("all rows match:", ok)
 from time import sleep
 
 a, b = OutputDevice(17), OutputDevice(27)
-for va, vb in ((0, 0), (0, 1), (1, 0), (1, 1)):
-    a.value, b.value = va, vb
-    print(f"{va} + {vb} = carry {va & vb}, sum {va ^ vb}")
-    sleep(0.6)
+while True:                      # runs until you press Stop
+    for va, vb in ((0, 0), (0, 1), (1, 0), (1, 1)):
+        a.value, b.value = va, vb
+        print(f"{va} + {vb} = carry {va & vb}, sum {va ^ vb}")
+        sleep(0.6)
 `,
-      test: { expect: /1 \+ 1 = carry 1, sum 0/, seconds: 4, verify: (s) => check(lit(s, 'carry') && !lit(s, 'sum'), 'carry on, sum off for 1 + 1') },
+      test: { expect: /1 \+ 1 = carry 1, sum 0/, seconds: 2.2, verify: (s) => check(lit(s, 'carry') && !lit(s, 'sum'), 'carry on, sum off for 1 + 1') },
     },
     (c) => {
       c.part('xor', 'hc86', {}, '74HC86 XOR').w(`xor.VCC>${c.v33()}`, `xor.GND>${c.gnd()}`, 'xor.1A>pi.P11', 'xor.1B>pi.P13');
@@ -80,7 +83,7 @@ for va, vb in ((0, 0), (0, 1), (1, 0), (1, 1)):
       minutes: 25,
       title: ['More outputs with a 74HC595', 'مخارج إضافية بشريحة 74HC595'],
       goal: ['Control four LEDs with only three GPIO pins using a shift register.', 'التحكم بأربعة LEDs بثلاثة أطراف GPIO فقط باستخدام سجل إزاحة.'],
-      result: ['The LEDs show the bit patterns 0001, 0011, 0111, 1111.', 'تعرض الـ LEDs أنماط البتات 0001 و0011 و0111 و1111.'],
+      result: ['The LEDs fill up one by one (0001, 0011, 0111, 1111), clear and fill again, until you press Stop.', 'تمتلئ الـ LEDs واحداً تلو الآخر (0001 ثم 0011 ثم 0111 ثم 1111) ثم تُمسح وتمتلئ من جديد، حتى تضغط إيقاف.'],
       tryIt: ['Compare the printed bits with the LEDs (Q0 is the first LED).', 'قارن البتات المطبوعة مع الـ LEDs (Q0 هو أول LED).'],
       modify: ['Chain a second 74HC595 through Q7S for 16 outputs.', 'اربط شريحة 74HC595 ثانية عبر Q7S لتحصل على 16 مخرجاً.'],
       explain: ['Data is shifted in bit by bit on each clock pulse, then the latch pulse copies all bits to the outputs at once.', 'تُزاح البيانات بتاً بتاً مع كل نبضة ساعة، ثم تنسخ نبضة الإمساك كل البتات إلى المخارج دفعة واحدة.'],
@@ -88,12 +91,13 @@ for va, vb in ((0, 0), (0, 1), (1, 0), (1, 1)):
 from time import sleep
 
 sr = ShiftRegister(data=17, clock=27, latch=22)
-for pattern in (0b0001, 0b0011, 0b0111, 0b1111):
-    sr.write(pattern)
-    print(f"Q3..Q0 = {pattern:04b}")
-    sleep(0.5)
+while True:                      # runs until you press Stop
+    for pattern in (0b0001, 0b0011, 0b0111, 0b1111, 0b0000):
+        sr.write(pattern)
+        print(f"Q3..Q0 = {pattern:04b}")
+        sleep(0.5)
 `,
-      test: { expect: /Q3\.\.Q0 = 1111/, seconds: 4, verify: (s) => check(['q0', 'q1', 'q2', 'q3'].every((id) => lit(s, id)), 'all four LEDs on') },
+      test: { expect: /Q3\.\.Q0 = 1111/, seconds: 1.8, verify: (s) => check(['q0', 'q1', 'q2', 'q3'].every((id) => lit(s, id)), 'all four LEDs on') },
     },
     (c) => {
       c.part('sr', 'hc595', {}, '74HC595').w(`sr.VCC>${c.v33()}`, `sr.GND>${c.gnd()}`, 'sr.DS>pi.P11', 'sr.SHCP>pi.P13', 'sr.STCP>pi.P15', `sr.MR>${c.v33()}`, `sr.OE>${c.gnd()}`);
@@ -108,7 +112,7 @@ for pattern in (0b0001, 0b0011, 0b0111, 0b1111):
       minutes: 20,
       title: ['Isolated pulse link (PC817)', 'نقل نبضات معزول (PC817)'],
       goal: ['Send pulses through an optocoupler and count them on the isolated side.', 'إرسال نبضات عبر عازل ضوئي وعدّها على الجانب المعزول.'],
-      result: ['Five pulses are sent and five are counted.', 'تُرسل خمس نبضات وتُعدّ خمس.'],
+      result: ['Bursts of 5 pulses cross the isolation barrier every 1.5 s; each burst prints how many pulses were counted on the other side. It runs until you press Stop.', 'تعبر دفعات من 5 نبضات حاجز العزل كل 1.5 ثانية، وتطبع كل دفعة عدد النبضات المعدودة على الجانب الآخر، ويستمر حتى تضغط إيقاف.'],
       tryIt: ['Change the number of pulses in the code.', 'غيّر عدد النبضات في الكود.'],
       modify: ['Measure the pulse frequency on the receiving side.', 'قِس تردد النبضات على جانب الاستقبال.'],
       explain: ['The LED inside the PC817 switches the phototransistor; with a pull-up the output goes LOW for each pulse.', 'يشغّل الـ LED داخل PC817 الترانزستور الضوئي، ومع مقاومة الرفع ينخفض المخرج مع كل نبضة.'],
@@ -124,11 +128,14 @@ def pulse_seen():
     count += 1
 
 rx.when_activated = pulse_seen
-for i in range(5):
-    tx.on(); sleep(0.1); tx.off(); sleep(0.1)
-print("sent 5, counted", count)
+while True:                      # runs until you press Stop
+    count = 0
+    for i in range(5):
+        tx.on(); sleep(0.1); tx.off(); sleep(0.1)
+    print("sent 5, counted", count)
+    sleep(0.5)
 `,
-      test: { expect: /sent 5, counted 5/, seconds: 3 },
+      test: { expect: /sent 5, counted 5/, seconds: 2.5 },
     },
     (c) => c.part('r_led', 'resistor', { ohms: 470 }).part('opto', 'pc817', {}, 'PC817').w('pi.P11>r_led.1', 'r_led.2>opto.A', `opto.K>${c.gnd()}`, 'opto.C>pi.P15', `opto.E>${c.gnd()}`),
   ),
@@ -140,7 +147,7 @@ print("sent 5, counted", count)
       minutes: 15,
       title: ['Transistor switch for a 5 V load', 'ترانزستور كمفتاح لحمل 5 فولت'],
       goal: ['Switch a 5 V buzzer with an NPN transistor because a GPIO pin is only 3.3 V and 16 mA.', 'تشغيل جرس 5 فولت بترانزستور NPN لأن طرف GPIO يعطي 3.3 فولت و16 ملي أمبير فقط.'],
-      result: ['The buzzer beeps three times from the 5 V rail; the GPIO only supplies the small base current.', 'يصفّر الجرس ثلاث مرات من خط 5 فولت، ولا يعطي طرف GPIO إلا تيار القاعدة الصغير.'],
+      result: ['The buzzer gives three short beeps and one long beep through the transistor, then the pattern repeats until you press Stop.', 'يعطي الجرس ثلاث صفارات قصيرة وصفارة طويلة عبر الترانزستور، ثم يتكرر النمط حتى تضغط إيقاف.'],
       tryIt: ['Open the GPIO monitor to see the small current on GPIO17.', 'افتح مراقب GPIO لترى التيار الصغير على GPIO17.'],
       modify: ['Replace the buzzer with a 5 V relay coil (add a flyback diode!).', 'استبدل الجرس بملف مرحل 5 فولت (أضف ثنائي حماية!).'],
       explain: ['1 kΩ limits the base current to about 2.6 mA; the transistor then lets the buzzer current flow from 5 V to GND.', 'تحدد المقاومة 1 كيلو أوم تيار القاعدة بنحو 2.6 ملي أمبير، فيسمح الترانزستور بمرور تيار الجرس من 5 فولت إلى الأرضي.'],
@@ -148,14 +155,18 @@ print("sent 5, counted", count)
 from time import sleep
 
 switch = OutputDevice(17)
-for i in range(3):
-    switch.on(); sleep(0.3)
-    switch.off(); sleep(0.3)
-    print("beep", i + 1)
-switch.on(); sleep(0.5)
-print("final beep")
+while True:                      # runs until you press Stop
+    for i in range(3):
+        switch.on(); sleep(0.3)
+        switch.off(); sleep(0.3)
+        print("beep", i + 1)
+    switch.on()
+    print("final beep")
+    sleep(0.5)
+    switch.off()
+    sleep(1.5)
 `,
-      test: { expect: /final beep/, seconds: 4, verify: (s) => check(!!vis(s, 'bz').on, 'buzzer on through the transistor') },
+      test: { expect: /final beep/, seconds: 2.1, verify: (s) => check(!!vis(s, 'bz').on, 'buzzer on through the transistor') },
     },
     (c) => c.part('rb', 'resistor', { ohms: 1000 }).part('q1', 'npn', {}, '2N2222').part('bz', 'buzzer', {}, 'Buzzer 5 V').w('pi.P11>rb.1', 'rb.2>q1.B', `q1.E>${c.gnd()}`, `bz.P>${c.v50()}`, 'bz.N>q1.C'),
   ),
@@ -167,7 +178,7 @@ print("final beep")
       minutes: 10,
       title: ['NOT gate indicator', 'مؤشر بوابة NOT'],
       goal: ['See an inverter in action: the output LED is on when the input is LOW.', 'رؤية العاكس أثناء العمل: يضيء LED المخرج عندما يكون المدخل منخفضاً.'],
-      result: ['Input and output alternate: when GPIO17 is HIGH the LED is off and vice versa.', 'يتناوب المدخل والمخرج: عندما يكون GPIO17 مرتفعاً ينطفئ الـ LED والعكس.'],
+      result: ['The input switches between 0 and 1 every 1.5 s; the LED always shows the opposite. It runs until you press Stop.', 'يتبدل المدخل بين 0 و1 كل 1.5 ثانية، ويُظهر الـ LED دائماً العكس، ويستمر حتى تضغط إيقاف.'],
       tryIt: ['Watch the input in the GPIO monitor and the output LED.', 'راقب المدخل في مراقب GPIO والـ LED على المخرج.'],
       modify: ['Use two inverters in series: what happens?', 'استخدم عاكسين على التوالي: ماذا يحدث؟'],
       explain: ['A 74HC04 contains six NOT gates; output 1Y is always the opposite of input 1A.', 'تحتوي 74HC04 على ست بوابات NOT، والمخرج 1Y دائماً عكس المدخل 1A.'],
@@ -175,12 +186,13 @@ print("final beep")
 from time import sleep
 
 a = OutputDevice(17)
-for v in (0, 1, 0, 1):
-    a.value = v
-    print(f"input {v} -> LED {'on' if not v else 'off'}")
-    sleep(0.5)
+while True:                      # runs until you press Stop
+    for v in (0, 1):
+        a.value = v
+        print(f"input {v} -> LED {'on' if not v else 'off'}")
+        sleep(1.5)
 `,
-      test: { expect: /input 1 -> LED off/, seconds: 3, verify: (s) => check(!lit(s, 'out'), 'LED off for input 1') },
+      test: { expect: /input 0 -> LED on[\s\S]*input 1 -> LED off/, seconds: 2.5, verify: (s) => check(!lit(s, 'out'), 'LED off for input 1') },
     },
     (c) => c.part('inv', 'hc04', {}, '74HC04 NOT').part('r_out', 'resistor', { ohms: 330 }).part('out', 'led', { color: 'green' }, 'Output').w(`inv.VCC>${c.v33()}`, `inv.GND>${c.gnd()}`, 'inv.1A>pi.P11', 'inv.1Y>r_out.1', 'r_out.2>out.A', `out.K>${c.gnd()}`),
   ),

@@ -33,22 +33,19 @@ export const CHALLENGE_EXAMPLES: LibExample[] = [
       minutes: 30,
       title: ['Simon says memory game', 'لعبة "سايمون يقول" للذاكرة'],
       goal: ['Show a colour sequence on three LEDs and check that the player repeats it on three buttons.', 'عرض تسلسل ألوان على ثلاثة LEDs والتحقق من أن اللاعب يكرره على ثلاثة أزرار.'],
-      result: ['The sequence red, blue, green flashes; repeating it prints "correct! score 3".', 'يومض التسلسل أحمر ثم أزرق ثم أخضر، وعند تكراره يُطبع "correct! score 3".'],
+      result: ['The sequence red, blue, green flashes; repeating it scores 3 and a new colour is added each round. A mistake ends the game and a new one starts. It runs until you press Stop.', 'يومض التسلسل أحمر ثم أزرق ثم أخضر، وتكراره يعطي 3 نقاط، ويُضاف لون جديد في كل جولة. الخطأ ينهي اللعبة وتبدأ لعبة جديدة، ويستمر حتى تضغط إيقاف.'],
       tryIt: ['After "your turn", press the buttons in the order the LEDs flashed.', 'بعد ظهور "your turn" اضغط الأزرار بترتيب وميض الـ LEDs.'],
-      modify: ['Add one random colour per round with random.choice and keep playing until a mistake.', 'أضف لوناً عشوائياً في كل جولة باستخدام random.choice واستمر حتى يحدث خطأ.'],
+      modify: ['Speed up the flashes as the sequence grows.', 'اجعل الومضات أسرع كلما طال التسلسل.'],
       explain: ['Lists pair each LED with its button (same index). The program polls the buttons, then waits for the release so one press counts once.', 'تربط القوائم كل LED بزره (نفس الفهرس). يفحص البرنامج الأزرار، ثم ينتظر التحرير حتى تُحسب الضغطة مرة واحدة.'],
       code: `from gpiozero import LED, Button
 from time import sleep
+import random
 
 leds = [LED(17), LED(27), LED(22)]
 buttons = [Button(5), Button(6), Button(13)]
 names = ["red", "green", "blue"]
-sequence = [0, 2, 1]
-
-for i in sequence:
-    leds[i].on(); sleep(0.3); leds[i].off(); sleep(0.1)
-print("sequence:", ", ".join(names[i] for i in sequence))
-print("your turn")
+random.seed(3)
+START = [0, 2, 1]
 
 def read_press():
     while True:
@@ -60,17 +57,24 @@ def read_press():
                 return i
         sleep(0.01)
 
-score = 0
-for expected in sequence:
-    got = read_press()
-    if got != expected:
-        print(f"wrong: {names[got]} instead of {names[expected]}")
-        break
-    score += 1
-else:
-    print(f"correct! score {score}")
+sequence = list(START)
+while True:                      # runs until you press Stop
+    for i in sequence:
+        leds[i].on(); sleep(0.3); leds[i].off(); sleep(0.1)
+    print("sequence:", ", ".join(names[i] for i in sequence))
+    print("your turn")
+    for expected in sequence:
+        got = read_press()
+        if got != expected:
+            print(f"wrong: {names[got]} instead of {names[expected]} - game over, score {len(sequence) - 1}")
+            sequence = list(START)
+            break
+    else:
+        print(f"correct! score {len(sequence)}")
+        sequence.append(random.randrange(3))
+    sleep(1)
 `,
-      test: { expect: /sequence: red, blue, green[\s\S]*your turn[\s\S]*correct! score 3/, seconds: 5, events: [...tap('b0', 2), ...tap('b2', 2.6), ...tap('b1', 3.2)] },
+      test: { expect: /sequence: red, blue, green[\s\S]*your turn[\s\S]*correct! score 3[\s\S]*sequence: red, blue, green, \w+/, seconds: 7, events: [...tap('b0', 2), ...tap('b2', 2.6), ...tap('b1', 3.2)] },
     },
     (c) =>
       c
@@ -89,7 +93,7 @@ else:
       minutes: 30,
       title: ['Morse code decoder', 'مفكك شفرة مورس'],
       goal: ['Measure how long a button is held, classify dots and dashes and decode letters with a dictionary.', 'قياس مدة الضغط على الزر وتصنيف النقاط والشرطات وفك الحروف بقاموس.'],
-      result: ['Tapping ... --- ... prints S, O, S and "decoded: SOS".', 'النقر ... --- ... يطبع S ثم O ثم S ثم "decoded: SOS".'],
+      result: ['Tapping ... --- ... prints S, O, S; after a 2 s pause the word "SOS" is printed. It keeps decoding until you press Stop.', 'النقر ... --- ... يطبع S ثم O ثم S، وبعد توقف ثانيتين تُطبع الكلمة "SOS"، ويستمر في فك الشفرة حتى تضغط إيقاف.'],
       tryIt: ['Short presses are dots, long presses (> 0.3 s) are dashes; pause to finish a letter.', 'الضغطات القصيرة نقاط، والطويلة (أكثر من 0.3 ثانية) شرطات، وتوقف قليلاً لإنهاء الحرف.'],
       modify: ['Add the digits 0–9 to the dictionary and finish a word after a 2 s pause.', 'أضف الأرقام 0–9 إلى القاموس وأنهِ الكلمة بعد توقف ثانيتين.'],
       explain: ['wait_for_press(timeout=…) returns False when nobody presses in time, which marks the end of a letter. time.monotonic() measures the hold time.', 'تعيد wait_for_press(timeout=…) القيمة False إذا لم يضغط أحد في الوقت المحدد، وهذا يعني نهاية الحرف. وتقيس time.monotonic() مدة الضغط.'],
@@ -102,23 +106,27 @@ MORSE = {".-": "A", "-...": "B", "-.-.": "C", "-..": "D", ".": "E", "..-.": "F",
          "...-": "V", ".--": "W", "-..-": "X", "-.--": "Y", "--..": "Z"}
 key = Button(17)
 beep = Buzzer(18)
-symbols, text = "", ""
+symbols, word = "", ""
+last = time.monotonic()
 print("tap a message")
-while len(text) < 3:
+while True:                      # runs until you press Stop
     if key.wait_for_press(timeout=0.8):
         start = time.monotonic()
         beep.on()
         key.wait_for_release()
         beep.off()
-        symbols += "." if time.monotonic() - start < 0.3 else "-"
-    elif symbols:
+        last = time.monotonic()
+        symbols += "." if last - start < 0.3 else "-"
+    elif symbols:                # 0.8 s without a press ends the letter
         letter = MORSE.get(symbols, "?")
         print(f"{symbols:5} -> {letter}")
-        text += letter
+        word += letter
         symbols = ""
-print("decoded:", text)
+    elif word and time.monotonic() - last > 2:   # a longer pause ends the word
+        print("decoded:", word)
+        word = ""
 `,
-      test: { expect: /\.\.\.\s+-> S[\s\S]*---\s+-> O[\s\S]*decoded: SOS/, seconds: 9, events: morseEvents('... --- ...', 0.8, 'key') },
+      test: { expect: /\.\.\.\s+-> S[\s\S]*---\s+-> O[\s\S]*decoded: SOS/, seconds: 10, events: morseEvents('... --- ...', 0.8, 'key') },
     },
     (c) => c.button('key', 17, 'Morse key').buzzer('beep', 18),
   ),
@@ -173,7 +181,7 @@ class Thermostat:
             self.state = new
 
 stat = Thermostat(adafruit_dht.DHT22(board.D4), Heater(17, active_high=False), LED(27))
-for i in range(12):
+while True:                      # runs until you press Stop
     stat.step()
     time.sleep(2.1)
 `,
@@ -198,11 +206,12 @@ for i in range(12):
       minutes: 30,
       title: ['Vending machine state machine', 'آلة بيع بآلة الحالات'],
       goal: ['Model a machine as states and a transition table (a dict of dicts) instead of nested ifs.', 'نمذجة آلة كحالات وجدول انتقالات (قاموس من القواميس) بدلاً من الشروط المتداخلة.'],
-      result: ['Two coins move IDLE → ONE_COIN → READY; the select button vends (servo turns, buzzer beeps) and returns to IDLE.', 'عملتان تنقلان الآلة من IDLE إلى ONE_COIN ثم READY، وزر الاختيار يصرف المنتج (يدور السيرفو ويصدر الجرس صوتاً) ثم تعود إلى IDLE.'],
+      result: ['Two coins move IDLE → ONE_COIN → READY; the select button vends (servo turns, buzzer beeps) and returns to IDLE, ready for the next customer, until you press Stop.', 'عملتان تنقلان الآلة من IDLE إلى ONE_COIN ثم READY، وزر الاختيار يصرف المنتج (يدور السيرفو ويصدر الجرس صوتاً) ثم تعود إلى IDLE جاهزة للزبون التالي، حتى تضغط إيقاف.'],
       tryIt: ['Press COIN, COIN, then SELECT. Pressing SELECT first does nothing.', 'اضغط COIN مرتين ثم SELECT. الضغط على SELECT أولاً لا يفعل شيئاً.'],
       modify: ['Add a REFUND button that returns to IDLE from any paying state.', 'أضف زر استرداد يعيد الآلة إلى IDLE من أي حالة دفع.'],
       explain: ['TRANSITIONS[state][event] gives the next state; a missing key means the event is ignored. Actions run on entering a state.', 'يعطي TRANSITIONS[state][event] الحالة التالية، وغياب المفتاح يعني تجاهل الحدث. وتُنفَّذ الأفعال عند دخول الحالة.'],
       code: `from gpiozero import Button, LED, Buzzer, AngularServo
+from signal import pause
 from time import sleep
 
 coin, select = Button(17), Button(27)
@@ -237,12 +246,12 @@ def handle(event):
 
 coin.when_pressed = lambda: handle("coin")
 select.when_pressed = lambda: handle("select")
-sleep(6)
-print("final state:", state)
+print("insert two coins")
+pause()                          # runs until you press Stop
 `,
       test: {
-        expect: /'select' ignored in IDLE[\s\S]*IDLE -> ONE_COIN[\s\S]*ONE_COIN -> READY[\s\S]*READY -> VEND[\s\S]*item delivered[\s\S]*VEND -> IDLE[\s\S]*final state: IDLE/,
-        seconds: 8,
+        expect: /'select' ignored in IDLE[\s\S]*IDLE -> ONE_COIN[\s\S]*ONE_COIN -> READY[\s\S]*READY -> VEND[\s\S]*item delivered[\s\S]*VEND -> IDLE/,
+        seconds: 6,
         events: [...tap('select', 0.8), ...tap('coin', 1.6), ...tap('coin', 2.4), ...tap('select', 3.2)],
         verify: (s) => check(!lit(s, 'ready') && !vis(s, 'beep').on, 'idle again: ready LED and buzzer off'),
       },
@@ -256,29 +265,28 @@ print("final state:", state)
       level: 'advanced',
       minutes: 25,
       title: ['Sensor pipeline with generators', 'خط معالجة الحساس بالمولّدات'],
-      goal: ['Chain generator functions (read → smooth → detect changes) and time a function with a decorator.', 'ربط دوال مولّدة (قراءة ← تنعيم ← كشف التغيّر) وقياس زمن دالة بمُزخرف.'],
-      result: ['Only significant changes of the knob are reported; a summary of the work time is printed at the end.', 'لا يُبلَّغ إلا عن التغيرات المهمة في المقبض، ويُطبع ملخص زمن العمل في النهاية.'],
+      goal: ['Chain generator functions (read → smooth → detect changes) into an endless pipeline and log a function with a decorator.', 'ربط دوال مولّدة (قراءة ← تنعيم ← كشف التغيّر) في خط معالجة لا ينتهي، وتسجيل استدعاءات دالة بمُزخرف.'],
+      result: ['Only significant changes of the knob are reported, as they happen, until you press Stop.', 'لا يُبلَّغ إلا عن التغيرات المهمة في المقبض لحظة حدوثها، حتى تضغط إيقاف.'],
       tryIt: ['Turn the potentiometer from 20 % to 80 % during the run.', 'أدر مقياس الجهد من 20% إلى 80% أثناء التشغيل.'],
       modify: ['Add a stage that drops readings outside 0–100 %.', 'أضف مرحلة تحذف القراءات خارج 0–100%.'],
-      explain: ['Each stage is a generator that pulls from the previous one, so data flows one value at a time. functools.wraps keeps the decorated function’s name.', 'كل مرحلة مولّد يسحب القيم من المرحلة السابقة، فتتدفق البيانات قيمة بعد قيمة. وتحافظ functools.wraps على اسم الدالة المزخرفة.'],
+      explain: ['Each stage is a generator that pulls from the previous one, so data flows one value at a time and the pipeline never needs a list. The @logged decorator wraps report() and prints every call; functools.wraps keeps the function’s name.', 'كل مرحلة مولّد يسحب القيم من المرحلة السابقة، فتتدفق البيانات قيمة بعد قيمة ولا يحتاج خط المعالجة إلى قائمة. يغلّف المزخرف @logged الدالة report() ويطبع كل استدعاء، وتحافظ functools.wraps على اسم الدالة.'],
       code: `import functools, time
 import board, busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
 
-def timed(fn):
+def logged(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kw):
-        t0 = time.monotonic()
         result = fn(*args, **kw)
-        print(f"{fn.__name__} took {time.monotonic() - t0:.1f} s")
+        print(f"{fn.__name__}({args[0]:.1f}) -> knob at {result} %")
         return result
     return wrapper
 
 knob = AnalogIn(ADS.ADS1115(busio.I2C(board.SCL, board.SDA)), 0)
 
-def readings(n, every=0.2):
-    for _ in range(n):
+def readings(every=0.2):          # endless: one value per call of next()
+    while True:
         yield knob.voltage / 3.3 * 100
         time.sleep(every)
 
@@ -295,17 +303,14 @@ def changes(values, step=10):
             last = v
             yield v
 
-@timed
-def monitor():
-    reports = [round(v) for v in changes(smooth(readings(20)))]
-    for r in reports:
-        print(f"knob at {r} %")
-    return reports
+@logged
+def report(value):
+    return round(value)
 
-result = monitor()
-print("reports:", len(result))
+for v in changes(smooth(readings())):   # runs until you press Stop
+    report(v)
 `,
-      test: { expect: /knob at 2\d %[\s\S]*knob at [78]\d %[\s\S]*monitor took 4\.\d s[\s\S]*reports: \d/, seconds: 6, events: [{ at: 0, comp: 'knob', props: { position: 20 } }, { at: 1.5, comp: 'knob', props: { position: 80 } }] },
+      test: { expect: /knob at 2\d %[\s\S]*knob at [78]\d %/, seconds: 4, events: [{ at: 0, comp: 'knob', props: { position: 20 } }, { at: 1.5, comp: 'knob', props: { position: 80 } }] },
     },
     (c) => c.pot('knob', 0, { position: 20 }, 'Knob'),
   ),
@@ -317,8 +322,8 @@ print("reports:", len(result))
       minutes: 30,
       title: ['Plant scheduler with dataclasses', 'جدولة النباتات باستخدام dataclasses'],
       goal: ['Describe each plant as a dataclass, sort the plants by how thirsty they are and water only the neediest one.', 'وصف كل نبتة كـ dataclass، وترتيب النباتات حسب حاجتها للماء، وري الأكثر حاجة فقط.'],
-      result: ['The basil (driest relative to its target) is watered first; its valve opens while the mint’s stays closed.', 'تُروى نبتة الريحان أولاً (الأكثر جفافاً مقارنة بهدفها)، فيُفتح صمامها ويبقى صمام النعناع مغلقاً.'],
-      tryIt: ['Swap the soil values of the two sensors and run again.', 'بدّل قيمتي التربة في الحساسين وشغّل مجدداً.'],
+      result: ['Every 2 s the plants are ranked by need and only the neediest one is watered; when the basil is the driest, its valve opens while the mint’s stays closed. It runs until you press Stop.', 'كل ثانيتين تُرتب النباتات حسب حاجتها وتُروى الأكثر حاجة فقط، وعندما يكون الريحان الأكثر جفافاً يُفتح صمامه ويبقى صمام النعناع مغلقاً، ويستمر حتى تضغط إيقاف.'],
+      tryIt: ['While it runs, swap the soil values of the two sensors and watch the valves change.', 'أثناء التشغيل بدّل قيمتي التربة في الحساسين وراقب تغيّر الصمامات.'],
       modify: ['Add a field "last_watered" and skip plants watered less than 1 h ago.', 'أضف حقلاً باسم "last_watered" وتخطَّ النباتات التي رُويت قبل أقل من ساعة.'],
       explain: ['@dataclass writes __init__ and __repr__ for you; the "deficit" property is computed; sorted(key=…) orders by it.', 'تكتب @dataclass الدالتين __init__ و__repr__ نيابة عنك، وتُحسب الخاصية "deficit"، وترتب sorted(key=…) حسبها.'],
       code: `from dataclasses import dataclass
@@ -341,14 +346,18 @@ plants = [
     Plant("mint", 45, SoilMoisture(adc, 0), Valve(17, active_high=False)),
     Plant("basil", 55, SoilMoisture(adc, 1), Valve(27, active_high=False)),
 ]
-ranked = sorted(plants, key=lambda p: p.deficit, reverse=True)
-for p in ranked:
-    print(f"{p.name:6} deficit {p.deficit:5.1f} %")
-first = ranked[0]
-if first.deficit > 0:
-    first.valve.on()
-    print(f"watering {first.name}")
-    sleep(1.5)
+watering = None
+while True:                      # runs until you press Stop
+    ranked = sorted(plants, key=lambda p: p.deficit, reverse=True)
+    first = ranked[0] if ranked[0].deficit > 0 else None
+    for p in plants:
+        p.valve.value = p is first
+    if first is not watering:
+        for p in ranked:
+            print(f"{p.name:6} deficit {p.deficit:5.1f} %")
+        print(f"watering {first.name}" if first else "all plants are fine")
+        watering = first
+    sleep(2)
 `,
       test: {
         expect: /basil\s+deficit\s+2\d\.\d %[\s\S]*mint\s+deficit[\s\S]*watering basil/,
@@ -373,7 +382,7 @@ if first.deficit > 0:
       minutes: 25,
       title: ['Sensor watchdog with exceptions', 'مراقب الحساس باستخدام الاستثناءات'],
       goal: ['Keep a light logger running when the I2C sensor disappears: catch the error, report it and retry.', 'إبقاء مسجل الضوء يعمل عندما يختفي حساس I2C: التقاط الخطأ والإبلاغ عنه وإعادة المحاولة.'],
-      result: ['Readings stop with "sensor lost" while the BH1750 is disconnected and resume afterwards; the program never crashes.', 'تتوقف القراءات مع رسالة "sensor lost" أثناء فصل BH1750 ثم تُستأنف بعد ذلك، ولا يتعطل البرنامج أبداً.'],
+      result: ['Readings stop with "sensor lost" while the BH1750 is disconnected and resume afterwards; the logger never crashes and runs until you press Stop.', 'تتوقف القراءات مع رسالة "sensor lost" أثناء فصل BH1750 ثم تُستأنف بعد ذلك، ولا يتعطل المسجل أبداً ويستمر حتى تضغط إيقاف.'],
       tryIt: ['Set the BH1750 fault to "Sensor disconnected" for a few seconds.', 'اضبط عطل BH1750 على "Sensor disconnected" لبضع ثوانٍ.'],
       modify: ['Blink the LED faster the longer the sensor is missing.', 'اجعل الـ LED يومض أسرع كلما طال غياب الحساس.'],
       explain: ['A missing I2C device does not acknowledge its address, which Linux reports as OSError errno 121 (Remote I/O); smartfarm wraps it in SensorError with that message. try/except/else separates the error path from the normal one.', 'جهاز I2C المفقود لا يرد على عنوانه، ويبلّغ لينكس عن ذلك بالخطأ OSError رقم 121 (Remote I/O)، وتغلّفه smartfarm في SensorError مع الرسالة نفسها. وتفصل try/except/else مسار الخطأ عن المسار العادي.'],
@@ -383,7 +392,7 @@ from time import sleep
 
 sensor, warn = BH1750(), LED(17)
 lost = False
-for i in range(12):
+while True:                      # runs until you press Stop
     try:
         lux = sensor.read()
     except SensorError as e:
@@ -398,11 +407,10 @@ for i in range(12):
         lost = False
         print(f"{lux:.0f} lux")
     sleep(0.5)
-print("logger still running")
 `,
       test: {
-        expect: /300 lux[\s\S]*sensor lost: BH1750: \[Errno 121\] Remote I\/O error[\s\S]*sensor back[\s\S]*logger still running/,
-        seconds: 8,
+        expect: /300 lux[\s\S]*sensor lost: BH1750: \[Errno 121\] Remote I\/O error[\s\S]*sensor back[\s\S]*300 lux/,
+        seconds: 6,
         events: [
           { at: 1.6, comp: 'light', props: { fault: 'disconnected' } },
           { at: 3.8, comp: 'light', props: { fault: 'none' } },
@@ -420,17 +428,19 @@ print("logger still running")
       minutes: 20,
       title: ['Binary quiz with LEDs', 'اختبار الأعداد الثنائية بالـ LEDs'],
       goal: ['Show numbers in binary on four LEDs and check the answers given with YES/NO buttons.', 'عرض أعداد بالنظام الثنائي على أربعة LEDs والتحقق من الإجابات بزري نعم ولا.'],
-      result: ['For each question the LEDs show a number; the player answers whether it is the asked value; the score is printed.', 'في كل سؤال تعرض الـ LEDs عدداً، ويجيب اللاعب هل هو القيمة المطلوبة، ثم تُطبع النتيجة.'],
+      result: ['For each question the LEDs show a number and the player answers YES or NO; the running score is printed. The quiz goes on until you press Stop.', 'في كل سؤال تعرض الـ LEDs عدداً ويجيب اللاعب بنعم أو لا، وتُطبع النتيجة المتراكمة، ويستمر الاختبار حتى تضغط إيقاف.'],
       tryIt: ['Read the LEDs (left = 8, right = 1) and press YES or NO.', 'اقرأ الـ LEDs (اليسار = 8 واليمين = 1) واضغط نعم أو لا.'],
       modify: ['Use a random number per question and keep a high score.', 'استخدم عدداً عشوائياً لكل سؤال واحتفظ بأعلى نتيجة.'],
       explain: ['(n >> bit) & 1 extracts one bit; LEDBoard.value takes a tuple of 0/1 values.', 'يستخرج التعبير (n >> bit) & 1 بتاً واحداً، وتأخذ LEDBoard.value مجموعة من القيم 0/1.'],
-      code: `from gpiozero import LEDBoard, Button
+      code: `import random
+from gpiozero import LEDBoard, Button
 from time import sleep
 
 leds = LEDBoard(5, 6, 13, 19)
 yes, no = Button(17), Button(27)
-questions = [(9, 9), (5, 6), (12, 12)]
-score = 0
+random.seed(5)
+questions = [(9, 9), (5, 6), (12, 12)]      # (shown, asked) - then random ones
+score = asked = 0
 
 def answer():
     while True:
@@ -440,17 +450,20 @@ def answer():
             no.wait_for_release(); return False
         sleep(0.01)
 
-for shown, asked in questions:
+while True:                      # runs until you press Stop
+    if questions:
+        shown, asked_value = questions.pop(0)
+    else:
+        shown = random.randrange(16)
+        asked_value = random.choice([shown, random.randrange(16)])
     leds.value = tuple((shown >> bit) & 1 for bit in (3, 2, 1, 0))
-    print(f"is this {asked}?")
-    said_yes = answer()
-    correct = said_yes == (shown == asked)
+    print(f"is this {asked_value}?")
+    correct = answer() == (shown == asked_value)
+    asked += 1
     score += correct
-    print(f"  shown {shown:04b} -> {'right' if correct else 'wrong'}")
-leds.off()
-print(f"score {score}/{len(questions)}")
+    print(f"  shown {shown:04b} -> {'right' if correct else 'wrong'}   score {score}/{asked}")
 `,
-      test: { expect: /shown 1001 -> right[\s\S]*shown 0101 -> right[\s\S]*shown 1100 -> right[\s\S]*score 3\/3/, seconds: 5, events: [...tap('yes', 0.6), ...tap('no', 1.4), ...tap('yes', 2.2)] },
+      test: { expect: /shown 1001 -> right[\s\S]*shown 0101 -> right[\s\S]*shown 1100 -> right\s+score 3\/3/, seconds: 3, events: [...tap('yes', 0.6), ...tap('no', 1.4), ...tap('yes', 2.2)] },
     },
     (c) =>
       c

@@ -19,7 +19,7 @@ from time import sleep
 
 soil = SoilMoisture(ADS1115(), 0)
 pump = Pump(17, active_high=False)
-for i in range(10):
+while True:                      # runs until you press Stop
     m = soil.read()
     if m < 35 and not pump.is_on:
         pump.on(); print(f"soil {m:.0f} % -> watering")
@@ -62,7 +62,7 @@ def grade(name, value):
     lo, hi = TARGET[name]
     return "too low" if value < lo else "too high" if value > hi else "OK"
 
-for i in range(3):
+while True:                      # runs until you press Stop
     p, e = ph.read(), ec.read()
     print(f"pH {p:.2f} {grade('pH', p):8s}  EC {e:.2f} mS/cm {grade('EC', e)}")
     sleep(1.2)
@@ -79,7 +79,7 @@ for i in range(3):
       minutes: 15,
       title: ['Grow-light photoperiod (18/6)', 'دورة الإضاءة الزراعية (18/6)'],
       goal: ['Switch a grow light from the clock: on from 06:00 to 24:00.', 'تشغيل إضاءة النمو حسب الساعة: من 06:00 حتى 24:00.'],
-      result: ['The schedule is checked for a few hours of the day, then the light is switched for the current time and the decision is printed.', 'يُفحص الجدول لعدة ساعات من اليوم، ثم تُشغَّل الإضاءة أو تُطفأ حسب الوقت الحالي ويُطبع القرار.'],
+      result: ['The schedule is checked for a few hours of the day; then the light follows the clock (checked every second) until you press Stop, and every switch is printed.', 'يُفحص الجدول لعدة ساعات من اليوم، ثم تتبع الإضاءة الساعة (تُفحص كل ثانية) حتى تضغط إيقاف، ويُطبع كل تبديل.'],
       tryIt: ['Use the ⏩ fast-forward button to jump past midnight and run again.', 'استخدم زر التقديم السريع ⏩ لتجاوز منتصف الليل ثم شغّل مجدداً.'],
       modify: ['Change to a 12/12 flowering schedule.', 'غيّر الجدول إلى 12/12 لمرحلة الإزهار.'],
       explain: ['One function decides from the hour; testing it on fixed hours first proves the schedule without waiting a whole day. A MOSFET dims the 12 V LED panel.', 'دالة واحدة تقرر حسب الساعة، واختبارها على ساعات ثابتة أولاً يثبت صحة الجدول دون انتظار يوم كامل. ويتحكم MOSFET بلوحة LED بجهد 12 فولت.'],
@@ -94,13 +94,15 @@ def light_on(hour):
 
 print("schedule:", ", ".join(f"{h:02d}:00 {'ON' if light_on(h) else 'off'}" for h in (0, 5, 6, 12, 23)))
 light = GrowLight(18)
-now = datetime.now()
-if light_on(now.hour):
-    light.on(1.0)
-else:
-    light.off()
-print(f"now {now:%H:%M} -> grow light {'ON' if light_on(now.hour) else 'off'}")
-sleep(1)
+state = None
+while True:                      # runs until you press Stop
+    now = datetime.now()
+    on = light_on(now.hour)
+    if on != state:
+        light.on(1.0) if on else light.off()
+        print(f"now {now:%H:%M} -> grow light {'ON' if on else 'off'}")
+        state = on
+    sleep(1)
 `,
       test: { expect: /schedule: 00:00 off, 05:00 off, 06:00 ON, 12:00 ON, 23:00 ON\s+now \d\d:\d\d -> grow light (ON|off)/, seconds: 3 },
     },
@@ -123,7 +125,7 @@ from smartfarm import Fan, Humidifier
 
 sht = adafruit_sht31d.SHT31D(busio.I2C(board.SCL, board.SDA))
 fan, mist = Fan(17, active_high=False), Humidifier(27, active_high=False)
-for i in range(4):
+while True:                      # runs until you press Stop
     t, rh = sht.temperature, sht.relative_humidity
     fan.value = t > 28
     mist.value = rh < 50
@@ -150,7 +152,7 @@ for i in range(4):
       minutes: 30,
       title: ['EC-controlled nutrient dosing', 'جرعات المغذيات حسب EC'],
       goal: ['Dose nutrient in small, measured amounts until the EC target is reached.', 'إضافة المغذيات بجرعات صغيرة محسوبة حتى الوصول إلى هدف EC.'],
-      result: ['While EC is below 1.2 mS/cm a 2 ml dose is given and the program waits for mixing.', 'طالما EC أقل من 1.2 ملي سيمنز/سم تُعطى جرعة 2 مل وينتظر البرنامج الخلط.'],
+      result: ['Below the target the pump doses 2 ml and waits for mixing; once EC reaches 1.2 mS/cm dosing stops, and it doses again whenever EC falls. It keeps controlling until you press Stop.', 'تحت الهدف تضخ المضخة 2 مل وتنتظر الخلط، وعند وصول EC إلى 1.2 mS/cm يتوقف الحقن، ويُعاد الحقن كلما انخفضت الموصلية. ويستمر التحكم حتى تضغط إيقاف.'],
       tryIt: ['Start with EC 0.8; raise it to 1.3 after the first dose (as if the dose mixed in).', 'ابدأ بـ EC يساوي 0.8، وارفعه إلى 1.3 بعد الجرعة الأولى (كأن الجرعة اختلطت).'],
       modify: ['Stop after 5 doses even if the target is not reached (safety limit).', 'توقف بعد 5 جرعات حتى لو لم يُبلغ الهدف (حد أمان).'],
       explain: ['DosingPump turns millilitres into run time from its calibrated flow (100 ml/min → 1.2 s for 2 ml).', 'تحوّل DosingPump المليلترات إلى زمن تشغيل حسب تدفقها المعاير (100 مل/دقيقة تعني 1.2 ثانية لكل 2 مل).'],
@@ -161,15 +163,17 @@ ec = ECSensor(ADS1115(), 0, temperature=25)
 pump_a = DosingPump(17, flow_ml_per_min=100)
 TARGET = 1.2
 doses = 0
-while True:
+while True:                      # runs until you press Stop
     value = ec.read()
-    print(f"EC {value:.2f} mS/cm")
-    if value >= TARGET:
+    if value < TARGET:
+        print(f"EC {value:.2f} mS/cm")
+        pump_a.dose(2); doses += 1
+        print("dosed 2 ml")
+    elif doses:
+        print(f"EC {value:.2f} mS/cm")
         print("target reached after", doses, "dose(s)")
-        break
-    pump_a.dose(2); doses += 1
-    print("dosed 2 ml")
-    sleep(1.5)          # let it mix
+        doses = 0
+    sleep(1.5)                   # let it mix
 `,
       test: { expect: /EC 0\.8\d[\s\S]*dosed 2 ml[\s\S]*EC 1\.3\d[\s\S]*target reached after 1 dose/, seconds: 8, events: [{ at: 2, comp: 'ec', props: { ec: 1.3 } }], verify: (s) => check(!energised(s, 'relay'), 'dosing pump off') },
     },
@@ -194,7 +198,7 @@ from time import sleep
 sensor = DistanceSensor(echo=24, trigger=23, max_distance=2)
 valve = Valve(17, active_high=False)
 EMPTY, FULL = 100, 10          # cm from the sensor
-for i in range(10):
+while True:                      # runs until you press Stop
     d = sensor.distance * 100
     level = max(0, min(100, (EMPTY - d) / (EMPTY - FULL) * 100))
     if level < 30 and not valve.is_on:
@@ -233,7 +237,7 @@ from time import sleep
 
 probe = W1ThermSensor()
 bands = LEDBoard(cold=17, ok=27, warm=22)
-for i in range(4):
+while True:                      # runs until you press Stop
     t = probe.get_temperature()
     band = "cold" if t < 18 else "warm" if t > 24 else "ok"
     bands.value = (band == "cold", band == "ok", band == "warm")
@@ -260,7 +264,7 @@ for i in range(4):
       minutes: 30,
       title: ['Water by volume with a flow meter', 'الري بالحجم باستخدام عدّاد التدفق'],
       goal: ['Count flow-meter pulses to deliver an exact volume of water.', 'عدّ نبضات عدّاد التدفق لإيصال حجم ماء محدد بدقة.'],
-      result: ['The valve opens, the delivered litres are printed and it closes at 0.5 L.', 'يُفتح الصمام وتُطبع اللترات المُسلّمة، ويُغلق عند 0.5 لتر.'],
+      result: ['The valve opens until the flow meter has counted 0.5 L, closes and waters again 10 s later; every watering is printed until you press Stop.', 'يُفتح الصمام حتى يعد مقياس التدفق 0.5 لتر ثم يُغلق، ويروي مجدداً بعد 10 ثوانٍ، وتُطبع كل رية حتى تضغط إيقاف.'],
       tryIt: ['Watch the delivered volume rise in steps.', 'راقب ارتفاع الحجم المُسلّم خطوة بخطوة.'],
       modify: ['Raise an alarm if no pulses arrive within 2 s (empty pipe).', 'أطلق إنذاراً إذا لم تصل نبضات خلال ثانيتين (أنبوب فارغ).'],
       explain: ['YF-S201: about 7.5 pulses per second per L/min (450 pulses per litre). when_activated counts each pulse.', 'العداد YF-S201 يعطي نحو 7.5 نبضة في الثانية لكل لتر/دقيقة (450 نبضة لكل لتر)، وتعدّ when_activated كل نبضة.'],
@@ -278,14 +282,19 @@ def tick():
     pulses += 1
 
 flow.when_activated = tick
-valve.on()
-while pulses / PULSES_PER_LITRE < 0.5:
-    print(f"delivered {pulses / PULSES_PER_LITRE:.2f} L")
-    sleep(1)
-valve.off()
-print(f"done: {pulses / PULSES_PER_LITRE:.2f} L")
+watering = 0
+while True:                      # runs until you press Stop
+    watering += 1
+    pulses = 0
+    valve.on()
+    while pulses / PULSES_PER_LITRE < 0.5:
+        print(f"watering {watering}: delivered {pulses / PULSES_PER_LITRE:.2f} L")
+        sleep(1)
+    valve.off()
+    print(f"done: {pulses / PULSES_PER_LITRE:.2f} L - next watering in 10 s")
+    sleep(10)
 `,
-      test: { expect: /done: 0\.5\d L/, seconds: 12, verify: (s) => check(!running(s, 'valve'), 'valve closed') },
+      test: { expect: /done: 0\.5\d L/, seconds: 12, verify: (s) => check(!running(s, 'valve'), 'valve closed between waterings') },
     },
     (c) => c.part('flow', 'flow_sensor', { flow: 6 }, 'Flow meter').w(`flow.VCC>${c.v33()}`, `flow.GND>${c.gnd()}`, 'flow.SIG>pi.P13').supply().relay('relay', [17], {}, 'Relay').load('valve', 'solenoid_valve', 'relay', 1, {}, 'Valve'),
   ),
@@ -306,7 +315,7 @@ from smartfarm import Valve
 
 scd = adafruit_scd30.SCD30(busio.I2C(board.SCL, board.SDA))
 gas = Valve(17, active_high=False)
-for i in range(4):
+while True:                      # runs until you press Stop
     while not scd.data_available:
         time.sleep(0.5)
     co2 = scd.CO2
@@ -337,21 +346,24 @@ for i in range(4):
       minutes: 25,
       title: ['Soil NPK fertiliser advisor', 'مستشار الأسمدة حسب NPK في التربة'],
       goal: ['Read N, P and K from an RS-485 soil probe and suggest which nutrient is missing.', 'قراءة النيتروجين والفوسفور والبوتاسيوم من مجس تربة RS-485 واقتراح العنصر الناقص.'],
-      result: ['The probe values are printed with advice such as "add phosphorus".', 'تُطبع قيم المجس مع نصيحة مثل "أضف الفوسفور".'],
-      tryIt: ['Set the probe potassium (k) to 20 and run again.', 'اضبط البوتاسيوم (k) في المجس على 20 وشغّل مجدداً.'],
+      result: ['Every 3 s the probe is read: the N, P and K values and a fertiliser advice are printed, until you press Stop.', 'كل 3 ثوانٍ يُقرأ المجس وتُطبع قيم N وP وK مع نصيحة التسميد، حتى تضغط إيقاف.'],
+      tryIt: ['While it runs, raise phosphorus (P) above 25 mg/kg on the probe and watch the advice change.', 'أثناء التشغيل ارفع الفوسفور (P) فوق 25 ملغم/كغ في المجس وراقب تغيّر النصيحة.'],
       modify: ['Average three readings before advising.', 'خذ متوسط ثلاث قراءات قبل تقديم النصيحة.'],
       explain: ['smartfarm.ModbusSoilSensor reads the registers over Modbus RTU; a minimum level per nutrient decides the advice.', 'تقرأ ModbusSoilSensor السجلات عبر Modbus RTU، ويحدد حد أدنى لكل عنصر النصيحة.'],
-      code: `from smartfarm import ModbusSoilSensor
+      code: `from time import sleep
+from smartfarm import ModbusSoilSensor
 
 probe = ModbusSoilSensor(baud=9600)
-r = probe.read()
 MINIMUM = {"n": 30, "p": 25, "k": 40}
 NAMES = {"n": "nitrogen", "p": "phosphorus", "k": "potassium"}
-print(f"N {r['n']}  P {r['p']}  K {r['k']} mg/kg")
-missing = [NAMES[x] for x in "npk" if r[x] < MINIMUM[x]]
-print("advice:", "add " + " and ".join(missing) if missing else "no fertiliser needed")
+while True:                      # runs until you press Stop
+    r = probe.read()
+    print(f"N {r['n']}  P {r['p']}  K {r['k']} mg/kg")
+    missing = [NAMES[x] for x in "npk" if r[x] < MINIMUM[x]]
+    print("advice:", "add " + " and ".join(missing) if missing else "no fertiliser needed")
+    sleep(3)
 `,
-      test: { expect: /N 40\s+P 20\s+K 60 mg\/kg[\s\S]*advice: add phosphorus/ },
+      test: { expect: /N 40\s+P 20\s+K 60 mg\/kg[\s\S]*advice: add phosphorus[\s\S]*P 30[\s\S]*advice: no fertiliser needed/, seconds: 4, events: [{ at: 1, comp: 'soil', props: { p: 30 } }] },
     },
     (c) =>
       c
@@ -378,7 +390,7 @@ from gpiozero import LED
 
 dht = adafruit_dht.DHT22(board.D4)
 heater, frost = Heater(17, active_high=False), LED(27)
-for i in range(3):
+while True:                      # runs until you press Stop
     try:
         t = dht.temperature
     except RuntimeError:

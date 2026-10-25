@@ -414,14 +414,15 @@ from time import sleep
 # Most relay boards are active-LOW: IN=0 energises the coil.
 pump = OutputDevice(17, active_high=False, initial_value=False)
 
-for cycle in range(1, 4):
+cycle = 0
+while True:                      # runs until you press Stop
+    cycle += 1
     print(f"cycle {cycle}: pump ON")
     pump.on()
     sleep(3)
     print(f"cycle {cycle}: pump OFF")
     pump.off()
     sleep(3)
-print("done")
 `;
 
 export const ex07: Example = {
@@ -431,7 +432,7 @@ export const ex07: Example = {
   title: { en: 'Relay and DC pump', ar: 'مرحل ومضخة تيار مستمر' },
   objective: { en: 'Switch a 12 V load safely: the Pi only drives the relay input; the pump has its own supply.', ar: 'تشغيل حمل 12V بأمان: يتحكم Pi بمدخل المرحل فقط والمضخة لها مصدرها.' },
   parts: ['Relay module', '12 V supply', 'Water pump'],
-  expected: { en: 'Pump runs 3 s, stops 3 s, three times. The relay LED and contact state follow.', ar: 'تعمل المضخة 3 ث وتتوقف 3 ث ثلاث مرات، ويتبعها ضوء المرحل وحالة التلامس.' },
+  expected: { en: 'Pump runs 3 s, stops 3 s, and repeats until you press Stop. The relay LED and contact state follow.', ar: 'تعمل المضخة 3 ث وتتوقف 3 ث وتتكرر الدورة حتى تضغط إيقاف، ويتبعها ضوء المرحل وحالة التلامس.' },
   instructions: { en: 'Run and watch COM–NO close. Try the "Contacts stuck open" fault on the relay.', ar: 'شغّل وراقب إغلاق COM–NO. جرّب عطل "Contacts stuck open" على المرحل.' },
   breakIt: [{ en: 'Wire the pump directly to GPIO17: error — a GPIO cannot drive a pump.', ar: 'صل المضخة مباشرة بـ GPIO17: خطأ — لا يستطيع GPIO تشغيل مضخة.' }],
   build() {

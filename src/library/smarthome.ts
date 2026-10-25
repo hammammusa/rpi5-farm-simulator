@@ -20,7 +20,7 @@ from time import sleep
 
 sensor = BH1750()
 lamp = PWMLED(18)
-for i in range(6):
+while True:                      # runs until you press Stop
     lux = sensor.read()
     level = max(0.0, min(1.0, 1 - lux / 50))
     lamp.value = level
@@ -92,7 +92,7 @@ from gpiozero import Buzzer, LED
 smoke = MQSensor(ADS1115(), channel=0, model="mq2", divider=1.5)
 dht = adafruit_dht.DHT22(board.D4)
 siren, red = Buzzer(18), LED(27)
-for i in range(4):
+while True:                      # runs until you press Stop
     ppm = smoke.read()
     try:
         t = dht.temperature
@@ -127,7 +127,7 @@ probe = W1ThermSensor()
 heater = Heater(17, active_high=False)
 ON_BELOW, OFF_ABOVE = 19.0, 21.0
 heating = False
-for i in range(8):
+while True:                      # runs until you press Stop
     t = probe.get_temperature()
     if t < ON_BELOW:
         heating = True
@@ -169,7 +169,7 @@ from smartfarm import Fan
 sht = adafruit_sht31d.SHT31D(busio.I2C(board.SCL, board.SDA))
 fan = Fan(17, active_high=False)
 dry_since = None
-for i in range(14):
+while True:                      # runs until you press Stop
     rh = sht.relative_humidity
     if rh > 70 and not fan.is_on:
         fan.on(); print(f"RH {rh:.0f} % -> fan ON")
@@ -257,7 +257,7 @@ tsl = adafruit_tsl2561.TSL2561(busio.I2C(board.SCL, board.SDA))
 tsl.gain = 0                 # 1x gain and the shortest integration time for direct sun
 tsl.integration_time = 0
 blinds = AngularServo(18, min_angle=-90, max_angle=90, min_pulse_width=0.0005, max_pulse_width=0.0025)
-for i in range(6):
+while True:                      # runs until you press Stop
     lux = tsl.lux
     if lux is None:          # the sensor is saturated: treat as full sun
         lux = 40000
@@ -297,7 +297,7 @@ from gpiozero import PWMOutputDevice
 scd = adafruit_scd4x.SCD4X(busio.I2C(board.SCL, board.SDA))
 scd.start_periodic_measurement()
 fan = PWMOutputDevice(18, frequency=1000)
-for i in range(3):
+while True:                      # runs until you press Stop
     while not scd.data_ready:
         time.sleep(1)
     speed = max(0.2, min(1.0, (scd.CO2 - 600) / 800))
@@ -325,7 +325,7 @@ from gpiozero import RGBLED
 
 dht = adafruit_dht.DHT22(board.D4)
 lamp = RGBLED(red=17, green=27, blue=22)
-for i in range(3):
+while True:                      # runs until you press Stop
     try:
         t = dht.temperature
     except RuntimeError:
@@ -355,7 +355,7 @@ for i in range(3):
       minutes: 20,
       title: ['Garden sprinkler with rain skip', 'رشاش الحديقة مع التخطي عند المطر'],
       goal: ['Run a sprinkler cycle but skip it when the rain sensor is wet.', 'تشغيل دورة الرشاش مع تخطيها عندما يكون حساس المطر مبتلاً.'],
-      result: ['Dry: the valve opens for 2 s. Wet: the cycle is skipped with a message.', 'عند الجفاف يُفتح الصمام ثانيتين، وعند البلل تُتخطى الدورة مع رسالة.'],
+      result: ['Every cycle the zone is watered for 2 s unless the rain sensor is wet, in which case the cycle is skipped. Cycles continue until you press Stop.', 'في كل دورة تُروى المنطقة ثانيتين ما لم يكن حساس المطر مبللاً، فتُتخطى الدورة. تستمر الدورات حتى تضغط إيقاف.'],
       tryIt: ['Set the rain sensor wetness to 90 % before the second cycle.', 'اضبط بلل حساس المطر على 90% قبل الدورة الثانية.'],
       modify: ['Skip for 24 h after rain instead of only while wet.', 'تخطَّ لمدة 24 ساعة بعد المطر بدل التخطي أثناء البلل فقط.'],
       explain: ['The digital rain output is checked before each cycle; the valve is a 24 V irrigation valve on a relay.', 'يُفحص مخرج المطر الرقمي قبل كل دورة، والصمام صمام ري 24 فولت على مرحل.'],
@@ -365,7 +365,9 @@ from time import sleep
 
 rain = DigitalInputDevice(27)                # LOW = wet
 valve = Valve(17, active_high=False)
-for cycle in (1, 2):
+cycle = 0
+while True:                                  # runs until you press Stop
+    cycle += 1
     if rain.value == 0:
         print(f"cycle {cycle}: raining, skipped")
     else:

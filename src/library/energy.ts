@@ -18,7 +18,7 @@ export const ENERGY_EXAMPLES: LibExample[] = [
       minutes: 25,
       title: ['Pump power and energy meter', 'عدّاد قدرة وطاقة المضخة'],
       goal: ['Measure current, compute power (P = V × I) and integrate energy over time.', 'قياس التيار وحساب القدرة (P = V × I) وتجميع الطاقة مع الزمن.'],
-      result: ['Current, power and accumulated energy are printed every half second while the pump runs.', 'يُطبع التيار والقدرة والطاقة المتراكمة كل نصف ثانية أثناء عمل المضخة.'],
+      result: ['The pump runs while current, power and accumulated energy are printed twice a second, until you press Stop.', 'تعمل المضخة بينما يُطبع التيار والقدرة والطاقة المتراكمة مرتين في الثانية، حتى تضغط إيقاف.'],
       tryIt: ['Change the pump power from 6 W to 12 W while it runs.', 'غيّر قدرة المضخة من 6 إلى 12 واط أثناء التشغيل.'],
       modify: ['Estimate the cost per day at your electricity price.', 'قدّر التكلفة اليومية حسب سعر الكهرباء لديك.'],
       explain: ['Energy (Wh) = Σ power × Δt / 3600. The loop measures Δt with monotonic() so it stays correct if a step takes longer.', 'الطاقة بالواط ساعة = مجموع القدرة × Δt ÷ 3600، وتقيس الحلقة Δt بـ monotonic() لتبقى دقيقة إذا طالت خطوة.'],
@@ -31,7 +31,7 @@ VOLTS = 12.0
 energy_wh = 0.0
 pump.on()
 last = monotonic()
-for i in range(8):
+while True:                      # runs until you press Stop
     sleep(0.5)
     now = monotonic()
     amps = current.read()
@@ -39,7 +39,6 @@ for i in range(8):
     energy_wh += watts * (now - last) / 3600
     last = now
     print(f"{amps:.2f} A  {watts:5.1f} W  {energy_wh * 1000:6.2f} mWh")
-pump.off()
 `,
       test: { expect: /0\.(4\d|5\d) A\s+[56]\.\d W[\s\S]*(0\.[89]\d|1\.0\d) A\s+(9|1[0-2])\.\d W/, seconds: 6, events: [{ at: 1.8, comp: 'pump', props: { watts: 12 } }] },
     },
@@ -64,7 +63,7 @@ adc = ADS1115()
 load = Relay(17, active_high=False)
 RATIO = (47 + 10) / 10
 load.on()
-for i in range(6):
+while True:                      # runs until you press Stop
     v = adc.voltage(0) * RATIO
     soc = max(0, min(100, (v - 11.0) / (12.7 - 11.0) * 100))
     if v < 11.0 and load.is_on:
@@ -91,7 +90,7 @@ for i in range(6):
       minutes: 30,
       title: ['Load shedding under a current limit', 'تخفيف الأحمال تحت حد تيار'],
       goal: ['Keep the total current below a limit by switching off the least important load.', 'إبقاء التيار الكلي تحت حد معيّن بإطفاء الحمل الأقل أهمية.'],
-      result: ['Pump and heater start; the total exceeds 4 A, so the heater (low priority) is shed.', 'تبدأ المضخة والمدفأة، فيتجاوز المجموع 4 أمبير، فتُفصل المدفأة (أولوية منخفضة).'],
+      result: ['Both loads start; the current is monitored continuously and whenever it exceeds 4 A the lowest-priority load (heater) is switched off. It keeps monitoring until you press Stop.', 'يبدأ الحملان، ويُراقب التيار باستمرار، وكلما تجاوز 4 أمبير يُفصل الحمل الأقل أولوية (السخان)، ويستمر في المراقبة حتى تضغط إيقاف.'],
       tryIt: ['Watch the measured current before and after the heater is shed.', 'راقب التيار المقاس قبل فصل المدفأة وبعده.'],
       modify: ['Switch the heater back on when the pump stops.', 'أعد تشغيل المدفأة عندما تتوقف المضخة.'],
       explain: ['Loads are listed by priority; while the measured current is above the limit, the lowest-priority running load is switched off.', 'تُرتب الأحمال حسب الأولوية، وطالما التيار فوق الحد يُطفأ الحمل العامل ذو الأولوية الأدنى.'],
@@ -103,16 +102,16 @@ loads = [("pump", Relay(17, active_high=False)), ("heater", Relay(27, active_hig
 LIMIT = 4.0
 for name, relay in loads:
     relay.on(); print("start", name); sleep(0.5)
-total = meter.read()
-print(f"total {total:.1f} A")
-for name, relay in reversed(loads):
-    if total <= LIMIT:
-        break
-    relay.off(); sleep(0.3)
+while True:                      # runs until you press Stop
     total = meter.read()
-    print(f"shed {name} -> total {total:.1f} A")
+    running = [(n, r) for n, r in loads if r.value]
+    if total > LIMIT and len(running) > 1:
+        name, relay = running[-1]          # lowest priority still on
+        relay.off(); sleep(0.3)
+        print(f"total {total:.1f} A -> shed {name} -> total {meter.read():.1f} A")
+    sleep(0.5)
 `,
-      test: { expect: /total 5\.\d A[\s\S]*shed heater -> total 0\.\d A/, seconds: 4, verify: (s) => check(running(s, 'pump') && !running(s, 'heater'), 'pump on, heater shed') },
+      test: { expect: /total 5\.\d A -> shed heater -> total 0\.\d A/, seconds: 4, verify: (s) => check(running(s, 'pump') && !running(s, 'heater'), 'pump on, heater shed') },
     },
     (c) =>
       currentSensed(c, 20)
@@ -143,7 +142,7 @@ ads = ADS.ADS1115(busio.I2C(board.SCL, board.SDA))
 left, right = AnalogIn(ads, ADS.P0), AnalogIn(ads, ADS.P1)
 panel = AngularServo(18, min_angle=-90, max_angle=90, min_pulse_width=0.0005, max_pulse_width=0.0025)
 angle = 0
-for i in range(10):
+while True:                      # runs until you press Stop
     diff = left.voltage - right.voltage          # > 0: right is brighter
     if abs(diff) > 0.05:
         angle = max(-90, min(90, angle + (10 if diff > 0 else -10)))
@@ -171,7 +170,7 @@ for i in range(10):
 from time import sleep
 
 adc = ADS1115()
-for i in range(5):
+while True:                      # runs until you press Stop
     vout = adc.voltage(0) * 1.5            # 10 k / 20 k divider
     status = "regulating" if vout > 4.75 else "DROPOUT: input too low"
     print(f"7805 output {vout:.2f} V -> {status}")
@@ -193,22 +192,22 @@ for i in range(5):
       minutes: 15,
       title: ['Standby power saver', 'موفّر طاقة الاستعداد'],
       goal: ['Cut power to devices when nobody has been in the room for a while.', 'قطع الطاقة عن الأجهزة عندما لا يوجد أحد في الغرفة لفترة.'],
-      result: ['Motion switches the outlet on; after 3 s without motion it switches off.', 'الحركة تشغّل المأخذ، وبعد 3 ثوانٍ دون حركة يُفصل.'],
+      result: ['Motion switches the outlet on; when the room has been empty for 3 s it switches off. It keeps watching the room until you press Stop.', 'الحركة تشغّل المأخذ، وعندما تبقى الغرفة فارغة 3 ثوانٍ يُطفأ، ويستمر في مراقبة الغرفة حتى تضغط إيقاف.'],
       tryIt: ['Set the PIR motion on, then off and wait.', 'فعّل حركة PIR ثم أوقفها وانتظر.'],
       modify: ['Count the seconds of saved standby time.', 'احسب ثواني وقت الاستعداد التي تم توفيرها.'],
       explain: ['MotionSensor.wait_for_no_motion() and a timer keep the logic short.', 'تجعل MotionSensor.wait_for_no_motion() مع مؤقت المنطق قصيراً.'],
       code: `from gpiozero import MotionSensor
 from smartfarm import Relay
-from time import sleep
 
 pir = MotionSensor(27)
 outlet = Relay(17, active_high=False)
-pir.wait_for_motion()
-outlet.on(); print("someone here -> outlet ON")
-pir.wait_for_no_motion()
-sleep(3)
-if not pir.motion_detected:
-    outlet.off(); print("room empty for 3 s -> outlet OFF")
+while True:                      # runs until you press Stop
+    pir.wait_for_motion()
+    if not outlet.value:
+        outlet.on(); print("someone here -> outlet ON")
+    pir.wait_for_no_motion()
+    if not pir.wait_for_motion(timeout=3):
+        outlet.off(); print("room empty for 3 s -> outlet OFF")
 `,
       test: {
         expect: /outlet ON[\s\S]*outlet OFF/,

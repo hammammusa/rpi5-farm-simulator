@@ -18,7 +18,7 @@ export const ROBOTICS_EXAMPLES: LibExample[] = [
       minutes: 25,
       title: ['Differential drive: drive a square', 'قيادة تفاضلية: رسم مربع'],
       goal: ['Steer a two-wheel robot by running its motors forwards and backwards.', 'توجيه روبوت بعجلتين بتشغيل محركيه للأمام وللخلف.'],
-      result: ['The robot drives forward and turns right four times, then stops.', 'يتقدم الروبوت ثم ينعطف يميناً أربع مرات ثم يتوقف.'],
+      result: ['The robot drives a square (four sides and four right turns), pauses for a second and drives the next square, until you press Stop.', 'يقود الروبوت مربعاً (أربعة أضلاع وأربع انعطافات يميناً)، ثم يتوقف ثانية ويقود المربع التالي، حتى تضغط إيقاف.'],
       tryIt: ['Watch both wheels: during a turn they spin in opposite directions.', 'راقب العجلتين: أثناء الانعطاف تدوران باتجاهين متعاكسين.'],
       modify: ['Make a triangle by changing the turn time.', 'ارسم مثلثاً بتغيير زمن الانعطاف.'],
       explain: ['Same direction on both wheels = straight; opposite directions = turn on the spot. Functions keep the moves readable.', 'الاتجاه نفسه للعجلتين يعني سيراً مستقيماً، والاتجاهان المتعاكسان يعنيان دوراناً في المكان، والدوال تجعل الحركات سهلة القراءة.'],
@@ -33,14 +33,18 @@ def forward(t):
 def turn_right(t):
     left.forward(0.6); right.backward(0.6); sleep(t)
 
-for side in range(4):
-    forward(0.6)
-    turn_right(0.3)
-    print("side", side + 1, "done")
-left.stop(); right.stop()
-print("square finished")
+square = 0
+while True:                      # runs until you press Stop
+    for side in range(4):
+        forward(0.6)
+        turn_right(0.3)
+        print("side", side + 1, "done")
+    left.stop(); right.stop()
+    square += 1
+    print(f"square {square} finished")
+    sleep(1)
 `,
-      test: { expect: /side 4 done[\s\S]*square finished/, seconds: 6, verify: (s) => check(!running(s, 'left') && !running(s, 'right'), 'both wheels stopped') },
+      test: { expect: /side 4 done[\s\S]*square 1 finished/, seconds: 4.2, verify: (s) => check(!running(s, 'left') && !running(s, 'right'), 'both wheels stopped in the pause') },
     },
     twoMotors,
   ),
@@ -62,7 +66,7 @@ from time import sleep
 left, right = Motor(23, 24), Motor(5, 6)
 eye = DistanceSensor(echo=27, trigger=17, max_distance=2)
 state = None
-for i in range(25):
+while True:                      # runs until you press Stop
     if eye.distance < 0.30:
         new = "turning"
         left.backward(0.6); right.forward(0.6)
@@ -73,7 +77,6 @@ for i in range(25):
         print(f"{eye.distance * 100:.0f} cm -> {new}")
         state = new
     sleep(0.2)
-left.stop(); right.stop()
 `,
       test: {
         expect: /120 cm -> forward[\s\S]*15 cm -> turning[\s\S]*120 cm -> forward/,
@@ -104,7 +107,7 @@ from time import sleep
 left, right = Motor(23, 24), Motor(5, 6)
 sensor_l, sensor_r = DigitalInputDevice(17), DigitalInputDevice(27)   # 1 = dark line
 last = None
-for i in range(30):
+while True:                      # runs until you press Stop
     l, r = sensor_l.value, sensor_r.value
     if l and not r:
         action = "steer left"; left.forward(0.2); right.forward(0.8)
@@ -115,7 +118,6 @@ for i in range(30):
     if action != last:
         print(action); last = action
     sleep(0.1)
-left.stop(); right.stop()
 `,
       test: {
         expect: /straight[\s\S]*steer left[\s\S]*straight[\s\S]*steer right/,
@@ -141,7 +143,7 @@ left.stop(); right.stop()
       minutes: 25,
       title: ['Two-servo arm: pick and place', 'ذراع بسيرفوين: التقاط ووضع'],
       goal: ['Coordinate two servos (base and gripper) with a list of poses.', 'تنسيق سيرفوين (القاعدة والقابض) بقائمة من الأوضاع.'],
-      result: ['The arm turns to the object, closes the gripper, turns to the target and opens.', 'تدور الذراع نحو الجسم وتغلق القابض ثم تدور نحو الهدف وتفتحه.'],
+      result: ['The arm repeats the pick-and-place cycle: to the object, grab, to the target, release; until you press Stop.', 'يكرر الذراع دورة الالتقاط والوضع: إلى الجسم، إمساك، إلى الهدف، إفلات، حتى تضغط إيقاف.'],
       tryIt: ['Watch the two servo angles change step by step.', 'راقب تغيّر زاويتي السيرفو خطوة بخطوة.'],
       modify: ['Add a third pose that returns the arm to the centre.', 'أضف وضعاً ثالثاً يعيد الذراع إلى المنتصف.'],
       explain: ['A pose is a (base, gripper) pair; the loop moves both and waits so the motion can finish.', 'الوضع زوج (القاعدة، القابض)، وتحرك الحلقة السيرفوين ثم تنتظر حتى تكتمل الحركة.'],
@@ -151,12 +153,16 @@ from time import sleep
 SG90 = dict(min_angle=-90, max_angle=90, min_pulse_width=0.0005, max_pulse_width=0.0025)
 base, grip = AngularServo(18, **SG90), AngularServo(13, **SG90)
 POSES = [("to object", -60, 60), ("grab", -60, -30), ("to target", 60, -30), ("release", 60, 60)]
-for name, b, g in POSES:
-    base.angle, grip.angle = b, g
-    print(f"{name:10s} base {b:+d}° gripper {g:+d}°")
-    sleep(0.6)
+cycle = 0
+while True:                      # runs until you press Stop
+    for name, b, g in POSES:
+        base.angle, grip.angle = b, g
+        print(f"{name:10s} base {b:+d}° gripper {g:+d}°")
+        sleep(0.6)
+    cycle += 1
+    print("items moved:", cycle)
 `,
-      test: { expect: /release\s+base \+60° gripper \+60°/, seconds: 4, verify: (s) => check(near(vis(s, 'base').angle ?? 0, 60, 3) && near(vis(s, 'grip').angle ?? 0, 60, 3), `base ${vis(s, 'base').angle}, grip ${vis(s, 'grip').angle}`) },
+      test: { expect: /release\s+base \+60° gripper \+60°/, seconds: 2.2, verify: (s) => check(near(vis(s, 'base').angle ?? 0, 60, 3) && near(vis(s, 'grip').angle ?? 0, 60, 3), `base ${vis(s, 'base').angle}, grip ${vis(s, 'grip').angle}`) },
     },
     (c) => c.servo('base', 18, 'mg996r').servo('grip', 13, 'sg90'),
   ),
@@ -168,25 +174,26 @@ for name, b, g in POSES:
       minutes: 30,
       title: ['Stepper sonar scanner', 'ماسح سونار بمحرك خطوي'],
       goal: ['Rotate a distance sensor with a stepper and build a list of (angle, distance) readings.', 'تدوير حساس مسافة بمحرك خطوي وبناء قائمة من قراءات (الزاوية، المسافة).'],
-      result: ['Five readings at 0°, 45°, 90°, 135° and 180° are printed with the closest direction.', 'تُطبع خمس قراءات عند 0° و45° و90° و135° و180° مع أقرب اتجاه.'],
+      result: ['The sonar sweeps from 0° to 180° in 45° steps, prints the nearest object of each sweep and sweeps back again, until you press Stop.', 'يمسح السونار من 0° إلى 180° بخطوات 45°، ويطبع أقرب جسم في كل مسح ثم يعود للمسح من جديد، حتى تضغط إيقاف.'],
       tryIt: ['Change the HC-SR04 distance during the scan to create a "close object".', 'غيّر مسافة HC-SR04 أثناء المسح لإنشاء "جسم قريب".'],
       modify: ['Print a simple text radar map from the readings.', 'اطبع خريطة رادار نصية بسيطة من القراءات.'],
       explain: ['min(scan, key=…) finds the reading with the smallest distance in the list of tuples.', 'تجد الدالة min(scan, key=…) القراءة ذات أقل مسافة في قائمة الثنائيات.'],
       code: `from smartfarm import Stepper28BYJ
 from gpiozero import DistanceSensor
-from time import sleep
 
 turntable = Stepper28BYJ([17, 18, 27, 22], delay=0.002)
 eye = DistanceSensor(echo=24, trigger=23, max_distance=3)
-scan = []
-for angle in range(0, 181, 45):
-    if angle:
-        turntable.rotate(45)
-    d = round(eye.distance * 100)
-    scan.append((angle, d))
-    print(f"{angle:3d}° : {d} cm")
-closest = min(scan, key=lambda r: r[1])
-print("closest object at", closest[0], "degrees,", closest[1], "cm")
+while True:                      # runs until you press Stop
+    scan = []
+    for angle in range(0, 181, 45):
+        if angle:
+            turntable.rotate(45)
+        d = round(eye.distance * 100)
+        scan.append((angle, d))
+        print(f"{angle:3d}° : {d} cm")
+    closest = min(scan, key=lambda r: r[1])
+    print("closest object at", closest[0], "degrees,", closest[1], "cm")
+    turntable.rotate(-180)       # back to the start for the next sweep
 `,
       test: { expect: /closest object at (90|135) degrees, 40 cm/, seconds: 20, events: [{ at: 3, comp: 'us', props: { distance: 40 } }, { at: 9, comp: 'us', props: { distance: 150 } }] },
     },
@@ -204,7 +211,7 @@ print("closest object at", closest[0], "degrees,", closest[1], "cm")
       minutes: 15,
       title: ['Bumper switch stops the robot', 'مفتاح المصد يوقف الروبوت'],
       goal: ['Use a contact switch as a safety bumper that immediately stops both motors.', 'استخدام مفتاح تلامس كمصد أمان يوقف المحركين فوراً.'],
-      result: ['The robot drives until the bumper is hit, then stops and reverses briefly.', 'يسير الروبوت حتى يصطدم المصد، ثم يتوقف ويرجع للخلف قليلاً.'],
+      result: ['The robot drives until the bumper is hit, stops, backs off, turns and drives on; every bump is handled until you press Stop.', 'يتقدم الروبوت حتى يُضرب المصد، فيتوقف ويرجع للخلف وينعطف ثم يتابع، ويعالج كل اصطدام حتى تضغط إيقاف.'],
       tryIt: ['Press the bumper button while the robot drives.', 'اضغط زر المصد أثناء سير الروبوت.'],
       modify: ['After reversing, turn and continue driving.', 'بعد الرجوع، انعطف وتابع السير.'],
       explain: ['wait_for_press() blocks the program until the bumper closes; the motors keep running in the meantime.', 'توقف wait_for_press() البرنامج حتى ينغلق المصد، بينما تستمر المحركات في الدوران.'],
@@ -213,16 +220,17 @@ from time import sleep
 
 left, right = Motor(23, 24), Motor(5, 6)
 bumper = Button(17)
-left.forward(0.8); right.forward(0.8)
-print("driving")
-bumper.wait_for_press()
-left.stop(); right.stop()
-print("bump! stopped")
-left.backward(0.5); right.backward(0.5); sleep(0.5)
-left.stop(); right.stop()
-print("backed off")
+while True:                      # runs until you press Stop
+    left.forward(0.8); right.forward(0.8)
+    print("driving")
+    bumper.wait_for_press()
+    left.stop(); right.stop()
+    print("bump! stopped")
+    left.backward(0.5); right.backward(0.5); sleep(0.5)
+    left.forward(0.6); right.backward(0.6); sleep(0.4)    # turn away
+    print("backed off")
 `,
-      test: { expect: /driving[\s\S]*bump! stopped[\s\S]*backed off/, seconds: 5, events: [{ at: 1.5, comp: 'bumper', press: true }], verify: (s) => check(!running(s, 'left') && !running(s, 'right'), 'stopped') },
+      test: { expect: /driving[\s\S]*bump! stopped[\s\S]*backed off[\s\S]*driving/, seconds: 5, events: [{ at: 1.5, comp: 'bumper', press: true }, { at: 1.8, comp: 'bumper', press: false }], verify: (s) => check(running(s, 'left') && running(s, 'right'), 'driving again after backing off') },
     },
     (c) => twoMotors(c).button('bumper', 17, 'Bumper'),
   ),

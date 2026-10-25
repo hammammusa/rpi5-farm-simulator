@@ -19,7 +19,7 @@ from time import sleep
 
 low, high = FloatSwitch(27), FloatSwitch(22)
 pump = Pump(17, active_high=False)
-for i in range(12):
+while True:                      # runs until you press Stop
     if not low.is_closed and not pump.is_on:
         pump.on(); print("level low -> filling")
     elif high.is_closed and pump.is_on:
@@ -54,7 +54,7 @@ for i in range(12):
       minutes: 30,
       title: ['Duty / standby pump alternation', 'تبديل المضختين: عاملة واحتياطية'],
       goal: ['Alternate two pumps each cycle so they wear evenly, and count running hours.', 'تبديل مضختين في كل دورة حتى تتساوى الأعمار، وعدّ ساعات التشغيل.'],
-      result: ['Four cycles run pump A, B, A, B; the run-time counters end equal.', 'تُشغّل أربع دورات المضخة A ثم B ثم A ثم B، وتنتهي عدادات التشغيل متساوية.'],
+      result: ['The pumps take turns (A, B, A, B …) so their running hours stay equal; the runtime of each is printed every cycle until you press Stop.', 'تتناوب المضختان (A ثم B ثم A ثم B …) لتبقى ساعات تشغيلهما متساوية، ويُطبع زمن تشغيل كل منهما في كل دورة حتى تضغط إيقاف.'],
       tryIt: ['Watch the two relay channels take turns.', 'راقب قناتي المرحل تتناوبان.'],
       modify: ['If one pump is "faulted", run the other one every cycle.', 'إذا كانت إحدى المضختين "معطلة" فشغّل الأخرى في كل دورة.'],
       explain: ['A dict keeps run-time per pump; the duty pump is chosen with cycle % 2.', 'يحتفظ قاموس بزمن تشغيل كل مضخة، وتُختار المضخة العاملة بالتعبير cycle % 2.'],
@@ -63,15 +63,17 @@ from time import sleep, monotonic
 
 pumps = {"A": OutputDevice(17, active_high=False), "B": OutputDevice(27, active_high=False)}
 runtime = {"A": 0.0, "B": 0.0}
-for cycle in range(4):
+cycle = 0
+while True:                      # runs until you press Stop
     name = "AB"[cycle % 2]
     start = monotonic()
     pumps[name].on(); sleep(0.8); pumps[name].off()
     runtime[name] += monotonic() - start
-    print(f"cycle {cycle + 1}: pump {name}  runtime A {runtime['A']:.1f} s  B {runtime['B']:.1f} s")
+    cycle += 1
+    print(f"cycle {cycle}: pump {name}  runtime A {runtime['A']:.1f} s  B {runtime['B']:.1f} s")
     sleep(0.2)
 `,
-      test: { expect: /cycle 4: pump B\s+runtime A 1\.6 s\s+B 1\.6 s/, seconds: 6, verify: (s) => check(!running(s, 'pumpA') && !running(s, 'pumpB'), 'both pumps off') },
+      test: { expect: /cycle 4: pump B\s+runtime A 1\.6 s\s+B 1\.6 s/, seconds: 3.9, verify: (s) => check(!running(s, 'pumpA') && !running(s, 'pumpB'), 'both pumps off between cycles') },
     },
     (c) => c.supply().relay('relay', [17, 27], {}, 'Relay ×2').load('pumpA', 'water_pump', 'relay', 1, {}, 'Pump A').load('pumpB', 'water_pump', 'relay', 2, {}, 'Pump B'),
   ),
@@ -83,7 +85,7 @@ for cycle in range(4):
       minutes: 25,
       title: ['Conveyor batch counter', 'عدّاد دفعات على سير ناقل'],
       goal: ['Count objects passing a light beam and stop the conveyor after a batch.', 'عدّ الأجسام التي تقطع شعاعاً ضوئياً وإيقاف السير الناقل بعد اكتمال الدفعة.'],
-      result: ['The conveyor runs until three objects have passed, then stops.', 'يعمل السير حتى تمر ثلاثة أجسام ثم يتوقف.'],
+      result: ['The belt runs until three objects have passed the light beam, stops for 2 s (batch change) and starts the next batch, until you press Stop.', 'يعمل السير حتى تمر ثلاثة أجسام عبر شعاع الضوء، ثم يتوقف ثانيتين (تغيير الدفعة) ويبدأ الدفعة التالية، حتى تضغط إيقاف.'],
       tryIt: ['Drop the light sensor lux to 50 and back three times.', 'خفّض lux في حساس الضوء إلى 50 ثم أعده ثلاث مرات.'],
       modify: ['Read the batch size from a DIP switch.', 'اقرأ حجم الدفعة من مفاتيح DIP.'],
       explain: ['Each beam interruption is one object (rising edge on DO); a counter compares with the batch size.', 'كل انقطاع للشعاع جسم واحد (حافة صاعدة على DO)، ويقارن عدّاد بحجم الدفعة.'],
@@ -93,20 +95,24 @@ from time import sleep
 beam = DigitalInputDevice(17)            # HIGH while an object blocks the light
 belt = Motor(23, 24)
 BATCH = 3
-count = 0
-belt.forward(0.6)
-print("conveyor running")
-while count < BATCH:
-    beam.wait_for_active()
-    count += 1
-    print("object", count)
-    beam.wait_for_inactive()
-belt.stop()
-print("batch complete, conveyor stopped")
+batch = 0
+while True:                              # runs until you press Stop
+    batch += 1
+    count = 0
+    belt.forward(0.6)
+    print(f"batch {batch}: conveyor running")
+    while count < BATCH:
+        beam.wait_for_active()
+        count += 1
+        print("object", count)
+        beam.wait_for_inactive()
+    belt.stop()
+    print("batch complete, conveyor stopped")
+    sleep(2)
 `,
       test: {
         expect: /object 3[\s\S]*batch complete, conveyor stopped/,
-        seconds: 6,
+        seconds: 4.5,
         events: [
           { at: 0.8, comp: 'beam', props: { lux: 50 } },
           { at: 1.2, comp: 'beam', props: { lux: 2000 } },
@@ -115,7 +121,7 @@ print("batch complete, conveyor stopped")
           { at: 2.8, comp: 'beam', props: { lux: 50 } },
           { at: 3.2, comp: 'beam', props: { lux: 2000 } },
         ],
-        verify: (s) => check(!running(s, 'belt'), 'conveyor stopped'),
+        verify: (s) => check(!running(s, 'belt'), 'conveyor stopped for the batch change'),
       },
     },
     (c) =>
@@ -211,7 +217,7 @@ from time import sleep
 
 pressure = PressureSensor(ADS1115(), 0, range_kpa=1200, divider=1.5)
 pump = Pump(17, active_high=False)
-for i in range(10):
+while True:                      # runs until you press Stop
     kpa = pressure.read()
     if kpa < 200 and not pump.is_on:
         pump.on(); print(f"{kpa:.0f} kPa -> pump ON")
@@ -239,7 +245,7 @@ for i in range(10):
       minutes: 20,
       title: ['Sequential motor start', 'تشغيل المحركات بالتتابع'],
       goal: ['Start several loads one after another to limit the inrush current.', 'تشغيل عدة أحمال واحداً تلو الآخر للحد من تيار البدء.'],
-      result: ['Fan, pump and heater switch on 1 s apart; on shutdown they stop in reverse order.', 'تعمل المروحة ثم المضخة ثم المدفأة بفاصل ثانية، وعند الإيقاف تتوقف بالترتيب العكسي.'],
+      result: ['The loads start one after another, run, stop in reverse order, rest for 2 s and the sequence repeats until you press Stop.', 'تبدأ الأحمال واحداً تلو الآخر، ثم تعمل، ثم تتوقف بالترتيب العكسي، وترتاح ثانيتين، ويتكرر التسلسل حتى تضغط إيقاف.'],
       tryIt: ['Watch the four-channel relay board switch channel by channel.', 'راقب لوحة المرحلات الرباعية تعمل قناة بعد قناة.'],
       modify: ['Abort the sequence if a fault input becomes active.', 'ألغِ التسلسل إذا نشط مدخل عطل.'],
       explain: ['A list of (name, device) pairs defines the order; reversed() gives the shutdown order.', 'تحدد قائمة من ثنائيات (الاسم، الجهاز) الترتيب، وتعطي reversed() ترتيب الإيقاف.'],
@@ -247,13 +253,15 @@ for i in range(10):
 from time import sleep
 
 loads = [("fan", OutputDevice(17, active_high=False)), ("pump", OutputDevice(27, active_high=False)), ("heater", OutputDevice(22, active_high=False))]
-for name, dev in loads:
-    dev.on(); print("start", name); sleep(1)
-sleep(1)
-for name, dev in reversed(loads):
-    dev.off(); print("stop", name); sleep(0.5)
+while True:                      # runs until you press Stop
+    for name, dev in loads:
+        dev.on(); print("start", name); sleep(1)
+    sleep(1)
+    for name, dev in reversed(loads):
+        dev.off(); print("stop", name); sleep(0.5)
+    sleep(2)
 `,
-      test: { expect: /start fan[\s\S]*start pump[\s\S]*start heater[\s\S]*stop heater[\s\S]*stop pump[\s\S]*stop fan/, seconds: 7, verify: (s) => check(!running(s, 'fan') && !running(s, 'pump') && !running(s, 'heater'), 'all loads off') },
+      test: { expect: /start fan[\s\S]*start pump[\s\S]*start heater[\s\S]*stop heater[\s\S]*stop pump[\s\S]*stop fan/, seconds: 6.5, verify: (s) => check(!running(s, 'fan') && !running(s, 'pump') && !running(s, 'heater'), 'all loads off in the rest') },
     },
     (c) =>
       c
@@ -271,7 +279,7 @@ for name, dev in reversed(loads):
       minutes: 30,
       title: ['Pump overcurrent trip (ACS712)', 'فصل المضخة عند زيادة التيار (ACS712)'],
       goal: ['Measure motor current with a Hall sensor and trip the relay on overload.', 'قياس تيار المحرك بحساس هول وفصل المرحل عند زيادة الحمل.'],
-      result: ['The pump runs at about 0.5 A; when a jam doubles the load, the relay trips.', 'تعمل المضخة بنحو 0.5 أمبير، وعندما يتضاعف الحمل بسبب انسداد يُفصل المرحل.'],
+      result: ['The pump current is printed every 0.5 s; above 1 A the pump is tripped, restarted after a 3 s cool-down, and locked out after the third trip. It keeps monitoring until you press Stop.', 'يُطبع تيار المضخة كل 0.5 ثانية، وعند تجاوز 1 أمبير تُفصل المضخة، ثم يُعاد تشغيلها بعد تبريد 3 ثوانٍ، وتُقفل بعد الفصل الثالث. ويستمر في المراقبة حتى تضغط إيقاف.'],
       tryIt: ['Change the pump power to 18 W (a jam) while it runs.', 'غيّر قدرة المضخة إلى 18 واط (انسداد) أثناء التشغيل.'],
       modify: ['Allow a short inrush (ignore the first 0.5 s).', 'اسمح بتيار بدء قصير (تجاهل أول نصف ثانية).'],
       explain: ['The ACS712 outputs VCC/2 + 185 mV per amp; CurrentSensor converts that (through the divider) to amps.', 'يُخرج ACS712 نصف جهد التغذية زائد 185 ملي فولت لكل أمبير، وتحوّل CurrentSensor ذلك (عبر المقسّم) إلى أمبير.'],
@@ -281,17 +289,24 @@ from time import sleep
 current = CurrentSensor(ADS1115(), 0, divider=1.5)
 pump = Pump(17, active_high=False)
 LIMIT = 1.0
+trips = 0
 pump.on()
-for i in range(10):
-    amps = current.read()
-    print(f"pump current {amps:.2f} A")
-    if amps > LIMIT:
-        pump.off()
-        print("OVERCURRENT -> pump tripped")
-        break
+while True:                      # runs until you press Stop
+    if pump.value:
+        amps = current.read()
+        print(f"pump current {amps:.2f} A")
+        if amps > LIMIT:
+            pump.off()
+            trips += 1
+            if trips < 3:
+                print(f"OVERCURRENT -> pump tripped ({trips}/3), restart in 3 s")
+                sleep(3)
+                pump.on()
+            else:
+                print("OVERCURRENT -> pump tripped 3 times: LOCKED OUT, check the pump")
     sleep(0.5)
 `,
-      test: { expect: /pump current 0\.[45]\d A[\s\S]*OVERCURRENT -> pump tripped/, seconds: 6, events: [{ at: 1.8, comp: 'pump', props: { watts: 18 } }], verify: (s) => check(!energised(s, 'relay'), 'relay tripped') },
+      test: { expect: /pump current 0\.[45]\d A[\s\S]*OVERCURRENT -> pump tripped \(1\/3\)/, seconds: 4.5, events: [{ at: 1.8, comp: 'pump', props: { watts: 18 } }], verify: (s) => check(!energised(s, 'relay'), 'relay tripped') },
     },
     (c) => {
       c.supply();
@@ -309,7 +324,7 @@ for i in range(10):
       minutes: 15,
       title: ['Machine stack light', 'برج إشارات الآلة'],
       goal: ['Show a machine state (running / warning / fault) on a green-amber-red tower with a horn.', 'عرض حالة الآلة (تعمل/تحذير/عطل) على برج أخضر-أصفر-أحمر مع صفارة.'],
-      result: ['The tower cycles through the states; the horn sounds only for a fault.', 'يتنقل البرج بين الحالات، ولا تعمل الصفارة إلا عند العطل.'],
+      result: ['The tower shows running (green), warning (amber) and fault (red + horn) in turn, over and over until you press Stop.', 'يعرض البرج حالة التشغيل (أخضر) والتحذير (أصفر) والعطل (أحمر + بوق) بالتناوب، باستمرار حتى تضغط إيقاف.'],
       tryIt: ['Watch the three lights and the horn.', 'راقب الأضواء الثلاثة والصفارة.'],
       modify: ['Blink the amber light in the warning state.', 'اجعل الضوء الأصفر يومض في حالة التحذير.'],
       explain: ['A dictionary maps each state to the lights that must be on; one function applies it.', 'يربط قاموس كل حالة بالأضواء التي يجب أن تضيء، وتطبّقها دالة واحدة.'],
@@ -325,11 +340,12 @@ def show(state):
     horn.value = state == "fault"
     print("state:", state)
 
-for state in ("running", "warning", "fault", "running"):
-    show(state)
-    sleep(0.8)
+while True:                      # runs until you press Stop
+    for state in ("running", "warning", "fault"):
+        show(state)
+        sleep(0.8)
 `,
-      test: { expect: /state: fault[\s\S]*state: running/, seconds: 5, verify: (s) => check(lit(s, 'green') && !lit(s, 'red') && !vis(s, 'horn').on, 'back to running') },
+      test: { expect: /state: fault[\s\S]*state: running/, seconds: 3, verify: (s) => check(lit(s, 'green') && !lit(s, 'red') && !vis(s, 'horn').on, 'back to running') },
     },
     (c) => c.led('green', 17, 'green', 'Run').led('amber', 27, 'yellow', 'Warning').led('red', 22, 'red', 'Fault').buzzer('horn', 18),
   ),

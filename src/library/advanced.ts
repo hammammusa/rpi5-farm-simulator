@@ -22,7 +22,7 @@ export const ADVANCED_EXAMPLES: LibExample[] = [
       minutes: 45,
       title: ['Weather station with display and CSV log', 'محطة طقس مع شاشة وسجل CSV'],
       goal: ['Combine three sensors on two buses, a 20×4 display, a status LED and a data log into one station.', 'دمج ثلاثة حساسات على ناقلين مع شاشة 20×4 ومؤشر حالة وسجل بيانات في محطة واحدة.'],
-      result: ['Every cycle the LCD shows temperature, humidity, pressure, light and rain; weather.csv gets one row per cycle.', 'في كل دورة تعرض الشاشة الحرارة والرطوبة والضغط والإضاءة والمطر، ويُضاف صف إلى weather.csv لكل دورة.'],
+      result: ['Every 1.5 s the LCD shows temperature, humidity, pressure, light and rain, and weather.csv gets one more row, until you press Stop.', 'كل 1.5 ثانية تعرض الشاشة الحرارة والرطوبة والضغط والإضاءة والمطر، ويُضاف صف جديد إلى weather.csv، حتى تضغط إيقاف.'],
       tryIt: ['Wet the rain sensor (wetness 80 %) and watch line 4 of the LCD change to RAIN.', 'بلّل حساس المطر (نسبة البلل 80%) وراقب تغيّر السطر الرابع في الشاشة إلى RAIN.'],
       modify: ['Add the dew point (see the dew-point example) and a daily max/min.', 'أضف نقطة الندى (انظر مثال نقطة الندى) والقيم العظمى والصغرى اليومية.'],
       explain: ['The BME280 (0x76), BH1750 (0x23) and LCD backpack (0x27) share the I2C bus; the rain module is a plain GPIO input. One function builds the four LCD lines, another writes the CSV row.', 'يتشارك BME280 (0x76) وBH1750 (0x23) ولوحة الشاشة (0x27) ناقل I2C، أما وحدة المطر فمدخل GPIO عادي. تبني دالة الأسطر الأربعة للشاشة، وتكتب دالة أخرى صف CSV.'],
@@ -50,21 +50,21 @@ def show(m):
         lcd.write_string(f"{text:<20}"[:20])
 
 with open("weather.csv", "w", newline="") as f:
-    log = csv.writer(f)
-    log.writerow(["cycle", "temp_c", "humidity", "pressure_hpa", "lux", "rain"])
-    for n in range(1, 4):
-        status.on()
-        m = measure()
-        show(m)
-        log.writerow([n, round(m["temp"], 1), round(m["hum"]), round(m["press"], 1), round(m["lux"]), int(m["rain"])])
-        print(f"cycle {n}: {m['temp']:.1f} C {m['hum']:.0f} % {m['press']:.0f} hPa {m['lux']:.0f} lux {'RAIN' if m['rain'] else 'dry'}")
-        status.off()
-        time.sleep(1.5)
-with open("weather.csv") as f:
-    print("rows logged:", len(f.readlines()) - 1)
+    csv.writer(f).writerow(["cycle", "temp_c", "humidity", "pressure_hpa", "lux", "rain"])
+n = 0
+while True:                      # runs until you press Stop
+    n += 1
+    status.on()
+    m = measure()
+    show(m)
+    with open("weather.csv", "a", newline="") as f:      # one row per cycle
+        csv.writer(f).writerow([n, round(m["temp"], 1), round(m["hum"]), round(m["press"], 1), round(m["lux"]), int(m["rain"])])
+    print(f"cycle {n}: {m['temp']:.1f} C {m['hum']:.0f} % {m['press']:.0f} hPa {m['lux']:.0f} lux {'RAIN' if m['rain'] else 'dry'} - rows logged: {n}")
+    status.off()
+    time.sleep(1.5)
 `,
       test: {
-        expect: /cycle 1: .* dry[\s\S]*cycle 3: .* RAIN[\s\S]*rows logged: 3/,
+        expect: /cycle 1: .* dry[\s\S]*cycle 3: .* RAIN - rows logged: 3/,
         seconds: 6,
         events: [{ at: 2, comp: 'rain', props: { wetness: 80 } }],
         verify: (s) => check(lcdLines(s, 'lcd')[3]?.startsWith('RAIN') ?? false, `LCD ${JSON.stringify(lcdLines(s, 'lcd'))}`),
@@ -121,7 +121,7 @@ def control():
     return f"{t:.1f} C soil {m:.0f} % tank {'ok' if water else 'EMPTY'} -> fan {fan.value} pump {pump.value} heater {heater.value}"
 
 last = None
-for i in range(8):
+while True:                      # runs until you press Stop
     summary = control()
     if summary != last:
         print(summary)
@@ -163,7 +163,7 @@ for i in range(8):
       minutes: 45,
       title: ['Smart door: secret knock, lock and porch light', 'باب ذكي: طرقة سرية وقفل وإضاءة مدخل'],
       goal: ['Unlock a servo lock with a secret knock (three presses within 2 s), relock automatically once the door is closed, switch a porch light on motion and warn when the door is left open.', 'فتح قفل سيرفو بطرقة سرية (ثلاث ضغطات خلال ثانيتين)، وإعادة القفل تلقائياً بعد إغلاق الباب، وتشغيل إضاءة المدخل عند الحركة، والتحذير عند ترك الباب مفتوحاً.'],
-      result: ['Motion lights the porch; the knock unlocks (green LED, servo at +90°); after the door opens and closes again it locks (red LED, servo at −90°).', 'تُضيء الحركة المدخل، وتفتح الطرقة القفل (LED أخضر وسيرفو عند +90°)، وبعد فتح الباب وإغلاقه يُقفل مجدداً (LED أحمر وسيرفو عند −90°).'],
+      result: ['Motion lights the porch; the knock unlocks (green LED, servo at +90°); after the door opens and closes again it locks (red LED, servo at −90°); a door left open for more than 3 s sounds the buzzer. It keeps guarding the door until you press Stop.', 'تُضيء الحركة المدخل، وتفتح الطرقة القفل (LED أخضر وسيرفو عند +90°)، وبعد فتح الباب وإغلاقه يُقفل مجدداً (LED أحمر وسيرفو عند −90°)، وترك الباب مفتوحاً أكثر من 3 ثوانٍ يشغّل الجرس. ويستمر في حراسة الباب حتى تضغط إيقاف.'],
       tryIt: ['Trigger the PIR, press the bell button three times quickly, then open (B) and close (A) the door contact.', 'شغّل PIR، واضغط زر الجرس ثلاث مرات بسرعة، ثم افتح الباب (B) وأغلقه (A).'],
       modify: ['Use a different rhythm (short-short-long) as the secret knock.', 'استخدم إيقاعاً مختلفاً (قصير-قصير-طويل) كطرقة سرية.'],
       explain: ['Each press is time-stamped; only the last three are kept and compared. A small state variable (locked / unlocked / open) decides what the door contact means.', 'تُسجّل كل ضغطة مع وقتها، ولا يُحتفظ إلا بآخر ثلاث للمقارنة. ومتغير حالة صغير (مقفل / مفتوح القفل / الباب مفتوح) يحدد معنى مفتاح الباب.'],
@@ -198,7 +198,7 @@ pir.when_no_motion = porch.off
 set_lock(True)
 print("door locked")
 opened_at = None
-for i in range(90):
+while True:                      # runs until you press Stop
     if state == "unlocked" and not door.value:
         state, opened_at = "open", monotonic()
         print("door opened")
@@ -208,9 +208,10 @@ for i in range(90):
             set_lock(True)
             print("door closed -> locked")
         elif monotonic() - opened_at > 3:
-            beep.on()
+            beep.on()            # door left open: warn until it is closed
+    if state != "open":
+        beep.off()
     sleep(0.1)
-beep.off()
 `,
       test: {
         expect: /door locked[\s\S]*motion -> porch light on[\s\S]*secret knock -> unlocked[\s\S]*door opened[\s\S]*door closed -> locked/,
@@ -269,7 +270,7 @@ TARGET, BAND = 25.0, 0.5
 feeder.angle = 90; time.sleep(0.4); feeder.angle = -90
 print("fed the fish")
 last = None
-for i in range(10):
+while True:                      # runs until you press Stop
     t = probe.get_temperature()
     tds.temperature = t
     ppm = tds.read()
@@ -319,7 +320,7 @@ for i in range(10):
       minutes: 50,
       title: ['Security patrol robot', 'روبوت دورية أمنية'],
       goal: ['Drive a patrol, stop at obstacles, look left and right with a servo-mounted sonar to choose the clearer side, and raise an alarm when the PIR sees an intruder.', 'قيادة دورية والتوقف عند العوائق والنظر يميناً ويساراً بسونار مثبت على سيرفو لاختيار الجهة الأوسع، وإطلاق إنذار عندما يرى PIR متسللاً.'],
-      result: ['The robot patrols, scans when blocked, turns toward the clearer side and continues; motion stops it with the siren and the warning LED on.', 'يقوم الروبوت بالدورية، ويمسح عند وجود عائق، وينعطف نحو الجهة الأوسع ويتابع، والحركة توقفه مع تشغيل الصفارة والـ LED التحذيري.'],
+      result: ['The robot patrols, scans when blocked, turns toward the clearer side and continues; motion stops it with the siren and the warning LED on until the intruder has gone, then the patrol resumes. It runs until you press Stop.', 'يقوم الروبوت بالدورية، ويمسح عند وجود عائق، وينعطف نحو الجهة الأوسع ويتابع، والحركة توقفه مع الصفارة والـ LED التحذيري حتى يغادر المتسلل، ثم تُستأنف الدورية. ويستمر حتى تضغط إيقاف.'],
       tryIt: ['Set the sonar distance to 15 cm, then back to 120 cm; finally trigger the PIR.', 'اضبط مسافة السونار على 15 سم ثم أعدها إلى 120 سم، ثم شغّل PIR في النهاية.'],
       modify: ['Return to patrolling 5 s after the intruder has gone.', 'عُد إلى الدورية بعد 5 ثوانٍ من مغادرة المتسلل.'],
       explain: ['The program is a loop of behaviours with priorities: intruder > obstacle > patrol. scan() points the servo, waits for it to settle and measures each side.', 'البرنامج حلقة سلوكيات بأولويات: المتسلل أولاً ثم العائق ثم الدورية. توجّه scan() السيرفو وتنتظر استقراره ثم تقيس كل جهة.'],
@@ -345,11 +346,13 @@ def scan():
 
 neck.angle = 0
 print("patrol started")
-for i in range(40):
+while True:                      # runs until you press Stop
     if pir.motion_detected:
         stop(); siren.on(); warn.on()
         print("INTRUDER detected -> stopped, alarm on")
-        break
+        pir.wait_for_no_motion()
+        siren.off(); warn.off()
+        print("all clear -> patrol resumed")
     if sonar.distance < 0.3:
         stop()
         sides = scan()
@@ -360,7 +363,6 @@ for i in range(40):
         sleep(0.4)
     left.forward(0.7); right.forward(0.7)
     sleep(0.15)
-sleep(0.5)
 `,
       test: {
         expect: /patrol started[\s\S]*obstacle at 15 cm -> scan 15\/15 cm -> turn left[\s\S]*INTRUDER detected -> stopped, alarm on/,

@@ -24,7 +24,7 @@ def heat_index(t, rh):
     # simple Steadman/NOAA approximation (°C)
     return t + 0.33 * (rh / 100 * 6.105 * 2.718 ** (17.27 * t / (237.7 + t))) - 4.0
 
-for i in range(3):
+while True:                      # runs until you press Stop
     try:
         t, rh = dht.temperature, dht.humidity
         print(f"T {t:.1f} °C  RH {rh:.0f} %  feels like {heat_index(t, rh):.1f} °C")
@@ -55,7 +55,7 @@ from adafruit_bme280 import basic as adafruit_bme280
 i2c = busio.I2C(board.SCL, board.SDA)
 bme = adafruit_bme280.Adafruit_BME280_I2C(i2c, address=0x76)
 first = bme.pressure
-for i in range(4):
+while True:                      # runs until you press Stop
     p = bme.pressure
     trend = p - first
     forecast = "rain likely" if trend < -1 else "stable"
@@ -92,7 +92,7 @@ def read_lux():
     hi, lo = list(msg)
     return ((hi << 8) | lo) / 1.2
 
-for i in range(3):
+while True:                      # runs until you press Stop
     lux = read_lux()
     label = "dark" if lux < 10 else "indoor" if lux < 1000 else "daylight"
     print(f"{lux:8.0f} lux -> {label}")
@@ -125,7 +125,7 @@ for i in range(3):
 from time import sleep
 
 sensor = DistanceSensor(echo=24, trigger=23, max_distance=2)
-for i in range(6):
+while True:                      # runs until you press Stop
     print(f"distance: {sensor.distance * 100:.1f} cm")
     sleep(0.5)
 `,
@@ -196,7 +196,7 @@ import board, busio
 import adafruit_scd30
 
 scd = adafruit_scd30.SCD30(busio.I2C(board.SCL, board.SDA))
-for i in range(3):
+while True:                      # runs until you press Stop
     while not scd.data_available:
         time.sleep(0.5)
     co2 = scd.CO2
@@ -225,7 +225,7 @@ from time import sleep
 
 gas = MQSensor(ADS1115(), channel=0, model="mq2", divider=1.5)
 buzzer = Buzzer(18)
-for i in range(6):
+while True:                      # runs until you press Stop
     ppm = gas.read()
     alarm = ppm > 1000
     buzzer.value = alarm
@@ -253,7 +253,7 @@ from time import sleep
 
 probe = W1ThermSensor()
 low, high = None, None
-for i in range(4):
+while True:                      # runs until you press Stop
     t = probe.get_temperature()
     low = t if low is None else min(low, t)
     high = t if high is None else max(high, t)
@@ -291,7 +291,7 @@ from adafruit_ads1x15.analog_in import AnalogIn
 ads = ADS.ADS1115(busio.I2C(board.SCL, board.SDA))
 ch = AnalogIn(ads, ADS.P0)
 R_FIXED, R25, BETA = 10000, 10000, 3950
-for i in range(3):
+while True:                      # runs until you press Stop
     v = ch.voltage
     r = R_FIXED * v / (3.3 - v)
     t = 1 / (1 / 298.15 + math.log(r / R25) / BETA) - 273.15
@@ -324,7 +324,7 @@ from adafruit_pm25.uart import PM25_UART
 uart = serial.Serial("/dev/serial0", baudrate=9600, timeout=2)
 pm = PM25_UART(uart)
 BANDS = [(12, "good"), (35, "moderate"), (55, "unhealthy for sensitive groups"), (150, "unhealthy"), (10**9, "very unhealthy")]
-for i in range(3):
+while True:                      # runs until you press Stop
     d = pm.read()
     pm25 = d["pm25 standard"]
     band = next(name for limit, name in BANDS if pm25 <= limit)
@@ -352,7 +352,7 @@ import board, busio
 import adafruit_sht31d
 
 sht = adafruit_sht31d.SHT31D(busio.I2C(board.SCL, board.SDA))
-for i in range(3):
+while True:                      # runs until you press Stop
     t, rh = sht.temperature, sht.relative_humidity
     g = math.log(rh / 100) + 17.62 * t / (243.12 + t)
     dew = 243.12 * g / (17.62 - g)
@@ -383,7 +383,7 @@ from adafruit_ads1x15.analog_in import AnalogIn
 
 ads = ADS.ADS1115(busio.I2C(board.SCL, board.SDA))
 knob = AnalogIn(ads, ADS.P0)
-for i in range(5):
+while True:                      # runs until you press Stop
     v = knob.voltage
     print(f"{v:.2f} V |{'#' * int(v / 3.3 * 20):<20}|")
     time.sleep(0.6)
@@ -409,7 +409,7 @@ from time import sleep
 
 rain = DigitalInputDevice(17)            # DO is LOW when wet
 last = None
-for i in range(10):
+while True:                      # runs until you press Stop
     state = "raining" if rain.value == 0 else "dry"
     if state != last:
         print(state)
@@ -438,7 +438,7 @@ import adafruit_bmp280
 
 bmp = adafruit_bmp280.Adafruit_BMP280_I2C(busio.I2C(board.SCL, board.SDA), address=0x76)
 bmp.sea_level_pressure = bmp.pressure          # start point = 0 m
-for i in range(3):
+while True:                      # runs until you press Stop
     print(f"P {bmp.pressure:.1f} hPa  height {bmp.altitude:+.0f} m")
     time.sleep(1.2)
 `,

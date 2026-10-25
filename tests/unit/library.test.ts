@@ -93,6 +93,8 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
   it('5–6 the code runs and produces the expected result under the test inputs', async () => {
     const { r, out, verdict, errors } = await runExample(e, doc);
     expect(r.status, out).not.toBe('error');
+    // like a real Pi program, every example keeps running until the user presses Stop
+    expect(r.status, `${e.id} ended by itself`).toBe('stopped');
     expect(out).toMatch(e.test.expect);
     expect(verdict, `${e.id}: ${verdict}`).toBeNull();
     expect(errors, `${e.id}: electrical errors`).toEqual([]);

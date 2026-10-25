@@ -165,7 +165,7 @@ from time import monotonic, sleep
 door = DigitalInputDevice(27, pull_up=True)    # active (1) = closed
 warn = LED(17)
 opened_at = None
-for i in range(80):
+while True:                      # runs until you press Stop
     if not door.value:
         if opened_at is None:
             opened_at = monotonic(); print("door opened")
@@ -195,7 +195,7 @@ for i in range(80):
       minutes: 20,
       title: ['Water-leak shut-off', 'إيقاف المياه عند التسرب'],
       goal: ['Detect a leak and close the main water valve automatically.', 'اكتشاف التسرب وإغلاق صمام المياه الرئيسي تلقائياً.'],
-      result: ['Normally the valve is open; when water is detected it closes and the buzzer sounds.', 'يكون الصمام مفتوحاً عادة، وعند اكتشاف الماء يُغلق ويعمل الجرس.'],
+      result: ['The main valve is open until the leak sensor gets wet; then it closes and the buzzer sounds. After the floor has been dry for 5 s the valve reopens. It keeps guarding until you press Stop.', 'يبقى الصمام الرئيسي مفتوحاً حتى يبتل حساس التسرب، فيُغلق ويرن الجرس. وبعد بقاء الأرض جافة 5 ثوانٍ يُعاد فتح الصمام، ويستمر في الحراسة حتى تضغط إيقاف.'],
       tryIt: ['Set the leak sensor to wet while it runs.', 'اضبط حساس التسرب على مبتل أثناء التشغيل.'],
       modify: ['Require a button press to reopen the valve after a leak.', 'اشترط الضغط على زر لإعادة فتح الصمام بعد التسرب.'],
       explain: ['The leak module output is read with smartfarm.LeakSensor; the valve relay is switched off as soon as it reports water.', 'يُقرأ مخرج وحدة التسرب عبر smartfarm.LeakSensor، ويُفصل مرحل الصمام فور الإبلاغ عن وجود ماء.'],
@@ -206,16 +206,20 @@ from time import sleep
 leak = LeakSensor(27)
 main_valve = Valve(17, active_high=False)
 buzzer = Buzzer(18)
-main_valve.on()
-print("main valve open")
-while True:
-    if leak.wet:
-        main_valve.off()
-        buzzer.on()
-        print("LEAK! main valve closed")
-        break
-    sleep(0.2)
-sleep(1)
+while True:                      # runs until you press Stop
+    main_valve.on()
+    buzzer.off()
+    print("main valve open")
+    while not leak.wet:
+        sleep(0.2)
+    main_valve.off()
+    buzzer.on()
+    print("LEAK! main valve closed")
+    dry_for = 0.0
+    while dry_for < 5:           # reopen only after 5 s without water
+        sleep(0.2)
+        dry_for = dry_for + 0.2 if not leak.wet else 0.0
+    print("dry for 5 s -> reopening")
 `,
       test: { expect: /main valve open[\s\S]*LEAK! main valve closed/, seconds: 5, events: [{ at: 1.5, comp: 'leak', props: { wet: 1 } }], verify: (s) => check(!energised(s, 'relay') && !!vis(s, 'bz').on, 'valve closed, buzzer on') },
     },
@@ -238,7 +242,7 @@ from time import sleep
 
 sensor = DistanceSensor(echo=24, trigger=23, max_distance=3)
 zones = LEDBoard(green=17, yellow=27, red=22)
-for i in range(8):
+while True:                      # runs until you press Stop
     d = sensor.distance
     zone = "safe" if d > 1 else "caution" if d > 0.4 else "ALARM"
     zones.value = (zone == "safe", zone == "caution", zone == "ALARM")
@@ -265,7 +269,7 @@ for i in range(8):
       minutes: 20,
       title: ['Dial safe (knob combination)', 'خزنة بقرص (رمز بالمقبض)'],
       goal: ['Read a dial value, quantise it to numbers 0–9 and check a combination.', 'قراءة قيمة القرص وتحويلها إلى أرقام من 0 إلى 9 ثم التحقق من الرمز.'],
-      result: ['Set the dial to 7 and press ENTER, then 3 and ENTER: the safe opens.', 'اضبط القرص على 7 واضغط إدخال، ثم على 3 واضغط إدخال: تُفتح الخزنة.'],
+      result: ['Entering 7 then 3 with the dial and ENTER opens the safe (green LED) for 5 s; a wrong combination is reported. It keeps accepting attempts until you press Stop.', 'إدخال 7 ثم 3 بالقرص وزر ENTER يفتح الخزنة (LED أخضر) لمدة 5 ثوانٍ، ويُبلَّغ عن الرمز الخاطئ، ويستمر في قبول المحاولات حتى تضغط إيقاف.'],
       tryIt: ['Move the knob to about 75 %, press ENTER; then to 35 %, press ENTER.', 'حرّك المقبض إلى نحو 75% واضغط إدخال، ثم إلى 35% واضغط إدخال.'],
       modify: ['Use three numbers and show progress with LEDs.', 'استخدم ثلاثة أرقام وأظهر التقدم بالـ LEDs.'],
       explain: ['digit = int(voltage / 3.3 × 10) turns the knob into 10 positions; the entered digits are compared with the combination.', 'المعادلة digit = int(voltage / 3.3 × 10) تحوّل المقبض إلى 10 مواضع، وتُقارن الأرقام المدخلة بالرمز.'],
@@ -279,18 +283,21 @@ dial = AnalogIn(ADS.ADS1115(busio.I2C(board.SCL, board.SDA)), ADS.P0)
 enter = Button(17)
 opened = LED(27)
 COMBO = [7, 3]
-entered = []
-while len(entered) < len(COMBO):
-    enter.wait_for_press()
-    digit = min(9, int(dial.voltage / 3.3 * 10))
-    entered.append(digit)
-    print("digit", digit)
-    enter.wait_for_release()
-if entered == COMBO:
-    opened.on(); print("SAFE OPEN")
-else:
-    print("wrong combination", entered)
-time.sleep(0.5)
+while True:                                  # runs until you press Stop
+    entered = []
+    print("enter the combination")
+    while len(entered) < len(COMBO):
+        enter.wait_for_press()
+        digit = min(9, int(dial.voltage / 3.3 * 10))
+        entered.append(digit)
+        print("digit", digit)
+        enter.wait_for_release()
+    if entered == COMBO:
+        opened.on(); print("SAFE OPEN")
+        time.sleep(5)
+        opened.off(); print("safe locked again")
+    else:
+        print("wrong combination", entered)
 `,
       test: {
         expect: /digit 7[\s\S]*digit 3[\s\S]*SAFE OPEN/,

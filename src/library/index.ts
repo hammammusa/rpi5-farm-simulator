@@ -81,7 +81,7 @@ function fromLegacy(ex: Example): LibraryEntry {
 
 const STEP = {
   open: ['Open the example: the circuit is already wired and the code is in main.py.', 'افتح المثال: الدائرة موصولة مسبقاً والكود موجود في main.py.'] as Bi,
-  run: ['Press ▶ Run and watch the terminal, the parts and the GPIO monitor.', 'اضغط ▶ تشغيل وراقب الطرفية والقطع ومراقب GPIO.'] as Bi,
+  run: ['Press ▶ Run and watch the terminal, the parts and the GPIO monitor. The program keeps running and reacting to your inputs until you press ■ Stop.', 'اضغط ▶ تشغيل وراقب الطرفية والقطع ومراقب GPIO. يستمر البرنامج في العمل والاستجابة لمدخلاتك حتى تضغط ■ إيقاف.'] as Bi,
 };
 
 function fromSpec(e: LibExample): LibraryEntry {
