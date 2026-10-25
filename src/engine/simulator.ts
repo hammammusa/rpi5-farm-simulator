@@ -127,6 +127,7 @@ export class Simulator {
   private powerState = new Map<string, boolean>();
   private lastTick = 0;
   private topoKey = '';
+  private wiringKey = '';
   private notifyQueued = false;
 
   constructor(doc: ProjectDoc, startMs = Date.now()) {
@@ -169,6 +170,13 @@ export class Simulator {
         delete r.trip5v;
         delete r.tripped;
       }
+    }
+    // warnings found while the program runs describe the circuit as it was: after a rewiring
+    // they are dropped and come back on the next failing access if the problem is still there
+    const wiring = JSON.stringify([doc.components.map((c) => [c.id, c.type]), doc.wires.map((w) => [w.from, w.to])]);
+    if (wiring !== this.wiringKey) {
+      this.wiringKey = wiring;
+      if (this.runtimeIssues.size) this.runtimeIssues.clear();
     }
     const ids = new Set(doc.components.map((c) => c.id));
     for (const id of [...this.rt.keys()]) if (!ids.has(id)) this.rt.delete(id);
@@ -747,6 +755,7 @@ export class Simulator {
     this.requirePi();
     const r = this.readLevel(b, t);
     if (r.floating && this.gpio[b].mode === 'input') this.issueOnce('W_FLOATING_INPUT', { pin: b });
+    else if (!r.floating) this.resolveIssue('W_FLOATING_INPUT', (p) => p.pin === b);
     return r;
   }
 
@@ -758,6 +767,12 @@ export class Simulator {
       this.log(`${code} ${JSON.stringify(params)}`, severity === 'error' ? 'error' : 'warn');
       this.notify();
     }
+  }
+  /** the operation that raised a runtime warning now works: the warning no longer applies */
+  private resolveIssue(code: string, match: (p: Record<string, string | number>) => boolean) {
+    let changed = false;
+    for (const [k, i] of this.runtimeIssues) if (i.code === code && match(i.params ?? {})) changed = this.runtimeIssues.delete(k) || changed;
+    if (changed) this.notify();
   }
   getRuntimeIssues() {
     return this.running ? [...this.runtimeIssues.values()] : [];
@@ -1144,6 +1159,7 @@ export class Simulator {
         this.pinNet(c.id, pn.gnd) === this.net.groundNet;
       if (!ok || !this.vis.get(c.id)?.powered) continue;
       const out = this.device(c.id)!.spiXfer!(bytes);
+      this.resolveIssue('W_SPI_NO_DEVICE', (p) => p.dev === dev);
       this.pushBusLog({ t: this.clock.now(), bus: 'SPI0', addr: `CE${dev}`, dir: 'x', bytes: [...bytes], peer: c.label || m.name, note: `MISO ${out.map((b) => b.toString(16).padStart(2, '0')).join(' ')}` });
       this.notify();
       return out;
@@ -1196,6 +1212,7 @@ export class Simulator {
         }
       }
       this.noteRead(c.id, kind, `${T} °C, ${H} %RH`);
+      this.resolveIssue('W_CODE_PIN_MISMATCH', (p) => p.pin === b);
       return { temperature: T, humidity: H, kind, comp: c.id } as any;
     }
     // nothing on this pin: tell the user where the DHT sensor really is

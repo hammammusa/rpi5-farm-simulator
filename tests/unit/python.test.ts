@@ -348,4 +348,40 @@ print("year", datetime.datetime.now().year)
     expect(r.stdout).toContain('runs 3');
     expect(r.stdout).toContain('year 2026');
   }, 60000);
+
+  it('a runtime warning disappears once the circuit is fixed while the program runs', async () => {
+    // DHT22 DATA is not wired yet; the program already reads GPIO14 (pin 8)
+    const doc = new CircuitBuilder().add('pi', 'rpi5', 0, 0).add('dht', 'dht22', 400, 100).wire('pi.P1', 'dht.VCC').wire('dht.GND', 'pi.P9').doc();
+    const h = new Harness(doc);
+    let warnedBefore = false;
+    let warnedAfterRead = false;
+    let wired = false;
+    h.onWait = (hh) => {
+      const t = hh.now() - hh.t0;
+      const warned = hh.sim.getRuntimeIssues().some((i) => i.code === 'W_CODE_PIN_MISMATCH');
+      if (!wired) warnedBefore ||= warned;
+      if (!wired && t > 1) {
+        wired = true;
+        const d = hh.sim.doc;
+        hh.sim.setDoc({ ...d, wires: [...d.wires, { id: 'wdata', from: { comp: 'dht', pin: 'DATA' }, to: { comp: 'pi', pin: 'P8' }, color: '#e6b800' }] });
+      }
+      if (wired && /T 25/.test(hh.stdout)) warnedAfterRead ||= warned;
+    };
+    const r = await h.run(
+      `import time, board, adafruit_dht
+dht = adafruit_dht.DHT22(board.D14)
+while True:
+    try:
+        print("T", dht.temperature)
+    except RuntimeError as e:
+        print("error:", e)
+    time.sleep(2.2)
+`,
+      { seconds: 7 },
+    );
+    expect(r.stdout).toMatch(/error: DHT sensor not found[\s\S]*T 25/);
+    expect(warnedBefore).toBe(true);
+    expect(warnedAfterRead).toBe(false);
+    expect(h.sim.issues.some((i) => i.code === 'W_CODE_PIN_MISMATCH')).toBe(false);
+  }, 60000);
 });
