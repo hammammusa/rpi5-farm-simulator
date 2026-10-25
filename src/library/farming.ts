@@ -287,9 +287,12 @@ while True:                      # runs until you press Stop
     watering += 1
     pulses = 0
     valve.on()
-    while pulses / PULSES_PER_LITRE < 0.5:
-        print(f"watering {watering}: delivered {pulses / PULSES_PER_LITRE:.2f} L")
-        sleep(1)
+    ticks = 0
+    while pulses / PULSES_PER_LITRE < 0.5:   # check often so the valve closes on time
+        if ticks % 10 == 0:                   # report once a second
+            print(f"watering {watering}: delivered {pulses / PULSES_PER_LITRE:.2f} L")
+        ticks += 1
+        sleep(0.1)
     valve.off()
     print(f"done: {pulses / PULSES_PER_LITRE:.2f} L - next watering in 10 s")
     sleep(10)
