@@ -520,8 +520,6 @@ export const pirSensor: PartManifest = {
       ctx.rt.holdUntil = now + Number(ctx.props.hold);
     }
     const holding = (ctx.rt.holdUntil ?? 0) > now;
-    // cleared one evaluation after it expires, so the simulator re-evaluates until OUT has fallen
-    if (ctx.rt.holdUntil !== undefined && !holding) delete ctx.rt.holdUntil;
     const high = ctx.fault === 'stuck' ? !!ctx.rt.stuckHigh : !!ctx.props.motion || holding;
     ctx.V('out', ctx.node('OUT'), ctx.node('GND'), high ? 3.3 : 0, 100);
   },

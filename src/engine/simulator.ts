@@ -233,8 +233,10 @@ export class Simulator {
       const m = hasPart(c.type) ? getPart(c.type) : null;
       if (m?.pulse && m.pulse.hz((k) => this.sensorValue(c, k), this.vis.get(c.id)) > 0) return true;
       if (this.rt.get(c.id)?.echoUntil && this.rt.get(c.id)!.echoUntil > this.clock.now()) return true;
-      // a running hold timer (PIR) changes the output later without any other event
-      if (this.rt.get(c.id)?.holdUntil !== undefined) return true;
+      // a running hold timer (PIR) changes the output later without any other event; keep
+      // evaluating a little past its end so the main evaluation always sees OUT fall
+      const hold = this.rt.get(c.id)?.holdUntil;
+      if (hold !== undefined && this.clock.now() < hold + 1) return true;
     }
     return false;
   }
