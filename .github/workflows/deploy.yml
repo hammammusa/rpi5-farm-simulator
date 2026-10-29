@@ -45,7 +45,7 @@ jobs:
   production-tests:
     # Full Playwright suite (including acceptance test T15) against the live HTTPS site
     needs: deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
