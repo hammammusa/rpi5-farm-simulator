@@ -331,7 +331,6 @@ export const AR: Record<string, string> = {
   'Perfectly mixed reservoir; EC mixes linearly by volume with the stock-solution EC.': 'خزان ممزوج بالكامل؛ يختلط EC خطياً حسب الحجم مع EC المحلول المركز.',
   'Each ml of A or B per litre lowers pH by 0.15; pH-down lowers 0.6 per ml/L (linear, clamped 3–9).': 'كل مل من A أو B لكل لتر يخفض pH بمقدار 0.15، وخافض pH يخفض 0.6 لكل مل/لتر (خطي، محدود بين 3 و9).',
   'Plants take up water at a constant rate; EC drifts −0.05/day and pH +0.1/day.': 'تمتص النباتات الماء بمعدل ثابت؛ ينجرف EC بمقدار −0.05 يومياً وpH بمقدار +0.1 يومياً.',
-  'Room air: one thermal mass (150 kJ/K), 1 h exchange with outdoors, 5 min with the fan on.': 'هواء الغرفة: كتلة حرارية واحدة (150 كيلوجول/كلفن)، تبادل مع الخارج خلال ساعة، و5 دقائق عند تشغيل المروحة.',
   'Pump flow = rated flow × electrical run fraction; no flow when the reservoir is below the intake (dry run) or the pump is faulted.': 'تدفق المضخة = التدفق المقنن × نسبة التشغيل الكهربائي؛ لا تدفق إذا كان الخزان تحت فتحة السحب (تشغيل جاف) أو كانت المضخة معطلة.',
   'This is a training model, not an agronomic or chemical simulation. Dosing accuracy is best at ≤10× speed.': 'هذا نموذج تدريبي وليس محاكاة زراعية أو كيميائية دقيقة. دقة الجرعات أفضل عند سرعة 10× أو أقل.',
 

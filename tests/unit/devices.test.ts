@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { CircuitBuilder } from '../../src/engine/project';
 import { Simulator } from '../../src/engine/simulator';
 import { makeComponent, type NextionProject } from '../../src/engine/devices/nextion';
-import { FarmModel, defaultFarmConfig } from '../../src/engine/farm';
+import { FarmModel, THERMAL_MASS, defaultFarmConfig, type HeatingMode } from '../../src/engine/farm';
+import { migrate } from '../../src/state/persist';
 
 const enc = (s: string) => [...new TextEncoder().encode(s), 0xff, 0xff, 0xff];
 
@@ -130,6 +131,43 @@ describe('farm model', () => {
     f.drives = [];
     f.advanceTo(5);
     expect(f.state.alarms.map((a) => a.id)).toContain('AB_SIMULTANEOUS');
+  });
+  it('the heating simulation mode sets the thermal mass of the room air', () => {
+    const rise = (mode: HeatingMode) => {
+      const cfg = { ...defaultFarmConfig(), heatingMode: mode };
+      cfg.env.outdoorTemp = cfg.initial.airTemp; // no exchange with outdoors at the start
+      const f = new FarmModel(cfg, 0);
+      f.drives = [{ comp: 'h', role: 'heater', run: 1, rate: 0, watts: 100 }];
+      f.advanceTo(60);
+      return f.state.air.temp - cfg.initial.airTemp;
+    };
+    expect(THERMAL_MASS).toEqual({ realistic: 150_000, training: 12_000, extreme: 2_500 });
+    // 100 W for 60 s = 6 kJ; ΔT ≈ 6000 / THERMAL_MASS (minus a little leakage to outdoors)
+    expect(rise('realistic')).toBeCloseTo(6000 / 150_000, 2);
+    expect(rise('training')).toBeCloseTo(6000 / 12_000, 1);
+    expect(rise('extreme')).toBeCloseTo(6000 / 2_500, 1);
+    expect(rise('extreme')).toBeGreaterThan(rise('training'));
+    expect(rise('training')).toBeGreaterThan(rise('realistic'));
+  });
+  it('a changed heating mode applies on the next step', () => {
+    const cfg = defaultFarmConfig();
+    cfg.env.outdoorTemp = cfg.initial.airTemp;
+    const f = new FarmModel(cfg, 0);
+    f.drives = [{ comp: 'h', role: 'heater', run: 1, rate: 0, watts: 100 }];
+    f.advanceTo(30);
+    const slow = f.state.air.temp - cfg.initial.airTemp;
+    f.cfg = { ...cfg, heatingMode: 'extreme' };     // what the Smart Farm tab does (doc.farm → sim)
+    f.advanceTo(60);
+    const fast = f.state.air.temp - cfg.initial.airTemp - slow;
+    expect(fast / slow).toBeGreaterThan(50);       // 150000 / 2500 = 60
+  });
+  it('projects without a heating mode (or with an unknown one) open as Realistic; a saved mode is kept', () => {
+    const base = { name: 'p', components: [], wires: [], files: [{ name: 'main.py', content: '' }] };
+    const { heatingMode: _, ...oldFarm } = defaultFarmConfig();
+    expect(migrate({ ...base, farm: oldFarm }).farm.heatingMode).toBe('realistic');
+    expect(migrate({ ...base, farm: { ...oldFarm, heatingMode: 'toString' } }).farm.heatingMode).toBe('realistic');
+    const saved = migrate({ ...base, farm: { ...oldFarm, heatingMode: 'training' } });
+    expect(migrate(JSON.parse(JSON.stringify(saved))).farm.heatingMode).toBe('training');
   });
   it('circulation pump runs dry when the reservoir is empty', () => {
     const cfg = defaultFarmConfig();

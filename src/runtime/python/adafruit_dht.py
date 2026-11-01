@@ -45,8 +45,9 @@ class DHTBase:
             self._temperature = int(round(r['temperature']))
             self._humidity = int(round(r['humidity']))
         else:
-            self._temperature = r['temperature']
-            self._humidity = r['humidity']
+            # the real library returns floats for the DHT22 (25.0, not 25)
+            self._temperature = float(r['temperature'])
+            self._humidity = float(r['humidity'])
 
     @property
     def temperature(self):

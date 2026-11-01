@@ -2,7 +2,7 @@
 import { createStore, del, get, set } from 'idb-keyval';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { ProjectDoc } from '../engine/types';
-import { defaultFarmConfig } from '../engine/farm';
+import { defaultFarmConfig, heatingModeOf } from '../engine/farm';
 import { emptyNextionProject } from '../engine/devices/nextion';
 import { CURRENT_SCHEMA, defaultView, uid } from '../engine/project';
 import { wiringTable } from './wiring';
@@ -83,7 +83,8 @@ export function migrate(d: any): ProjectDoc {
     files: d.files?.length ? d.files : [{ name: 'main.py', content: '' }],
     mainFile: d.mainFile ?? d.files?.[0]?.name ?? 'main.py',
     nextion: d.nextion ?? emptyNextionProject(),
-    farm: { ...defaultFarmConfig(), ...(d.farm ?? {}) },
+    // projects from before the heating simulation mode (or with an unknown value) heat realistically
+    farm: { ...defaultFarmConfig(), ...(d.farm ?? {}), heatingMode: heatingModeOf(d.farm ?? {}) },
     sim: d.sim ?? { speed: 1 },
     exampleId: d.exampleId,
     notes: d.notes,

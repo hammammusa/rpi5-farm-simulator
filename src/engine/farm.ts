@@ -7,8 +7,11 @@
 //    pH-down lowers pH by 0.6 (linear, clamped 3..9). Fresh water: EC 0.2, pH 7.2.
 //  * Plants take up `consumptionLPerDay` of water; EC drifts −0.05/day and
 //    pH +0.1/day (uptake), scaled by elapsed simulation time.
-//  * Room air is a single thermal mass (150 kJ/K) leaking to outdoor air with
-//    τ = 1 h; a running fan exchanges air with τ = 5 min.
+//  * Room air is a single thermal mass leaking to outdoor air with τ = 1 h; a
+//    running fan exchanges air with τ = 5 min. The heat capacity depends on the
+//    heating simulation mode: Realistic 150 kJ/K (a real small grow room),
+//    Training 12 kJ/K (heating visible within minutes) and Extreme Test 2.5 kJ/K
+//    (hypothetical: temperatures quickly leave the DHT22's −40…80 °C range).
 //  * Pumps run at their rated flow × electrical run fraction, unless the
 //    reservoir is below the pump intake (dry run) or the pump is faulted.
 // All constants are visible in this file and in the Smart Farm tab.
@@ -40,6 +43,21 @@ export const FARM_ROLE_LABELS: Record<FarmRole, string> = {
   grow_light: 'Grow light',
 };
 
+/** how fast the room air reacts to heating (selects the thermal mass) */
+export type HeatingMode = 'realistic' | 'training' | 'extreme';
+export const HEATING_MODES: HeatingMode[] = ['realistic', 'training', 'extreme'];
+
+/** heat capacity of the room air for each heating simulation mode (J/K) */
+export const THERMAL_MASS: Record<HeatingMode, number> = {
+  realistic: 150_000,
+  training: 12_000,
+  extreme: 2_500,
+};
+
+/** the configured mode; a missing or unknown value (older or hand-edited files) counts as Realistic */
+export const heatingModeOf = (cfg: { heatingMode?: unknown }): HeatingMode => (HEATING_MODES.includes(cfg.heatingMode as HeatingMode) ? (cfg.heatingMode as HeatingMode) : 'realistic');
+export const thermalMass = (cfg: { heatingMode?: unknown }) => THERMAL_MASS[heatingModeOf(cfg)];
+
 export interface FarmConfig {
   enabled: boolean;
   crop: string;
@@ -53,6 +71,7 @@ export interface FarmConfig {
   initial: { airTemp: number; humidity: number; co2: number };
   consumptionLPerDay: number;
   leak: boolean;
+  heatingMode: HeatingMode;
 }
 
 export function defaultFarmConfig(): FarmConfig {
@@ -69,6 +88,7 @@ export function defaultFarmConfig(): FarmConfig {
     initial: { airTemp: 25, humidity: 60, co2: 650 },
     consumptionLPerDay: 2,
     leak: false,
+    heatingMode: 'realistic',
   };
 }
 
@@ -134,7 +154,6 @@ export function initialFarmState(cfg: FarmConfig, t: number): FarmState {
   };
 }
 
-const THERMAL_MASS = 150_000; // J/K
 const TAU_ROOM = 3600;
 const TAU_FAN = 300;
 const TAU_WATER = 3 * 3600;
@@ -333,7 +352,8 @@ export class FarmModel {
     const a = s.air;
     const e = c.env;
     const exch = 1 / TAU_ROOM + fan / TAU_FAN;
-    a.temp += ((e.outdoorTemp - a.temp) * exch + (heatW + 0.8 * lightW) / THERMAL_MASS) * dt;
+    // the mode is read on every step, so a change in the Smart Farm tab applies at once
+    a.temp += ((e.outdoorTemp - a.temp) * exch + (heatW + 0.8 * lightW) / thermalMass(c)) * dt;
     const lightOn = lightW > 1;
     a.humidity += ((e.outdoorHumidity - a.humidity) * exch + (humid * 20 + (lightOn ? 2 : 0.5)) / 3600) * dt;
     a.humidity = Math.max(5, Math.min(99, a.humidity));

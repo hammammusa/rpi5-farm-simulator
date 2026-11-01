@@ -240,4 +240,18 @@ export const AR3: Record<string, string> = {
   'Auto Arrange + standard wire colours': 'ترتيب تلقائي + ألوان الأسلاك القياسية',
   'Auto Arrange: place parts in functional groups and route every wire (Ctrl+Z undoes it)': 'الترتيب التلقائي: يضع القطع في مجموعات وظيفية ويوجّه كل الأسلاك (Ctrl+Z للتراجع)',
   Arrange: 'ترتيب',
+  // Smart Farm: heating simulation mode
+  'Heating simulation mode': 'وضع محاكاة التدفئة',
+  'Room air thermal mass': 'الكتلة الحرارية لهواء الغرفة',
+  'Realistic': 'واقعي',
+  'Training': 'تدريبي',
+  'Extreme Test': 'اختبار متطرف',
+  'Room air of a small real grow room (150 kJ/K). A 100 W heater warms it by only about 0.04 °C per minute.': 'هواء غرفة زراعة صغيرة حقيقية (150 كيلوجول/كلفن). سخان بقدرة 100 واط يرفع حرارتها بنحو 0.04 °م فقط في الدقيقة.',
+  'Lighter room air (12 kJ/K): a 100 W heater warms it by about 0.5 °C per minute, so heating and control programs show visible results within minutes.': 'هواء غرفة أخف (12 كيلوجول/كلفن): سخان بقدرة 100 واط يرفع حرارتها بنحو 0.5 °م في الدقيقة، فتظهر نتائج التدفئة وبرامج التحكم خلال دقائق.',
+  'Very light room air (2.5 kJ/K): a 100 W heater warms it by about 2.4 °C per minute. Use it to test limits, alarms and cut-offs quickly.': 'هواء غرفة خفيف جداً (2.5 كيلوجول/كلفن): سخان بقدرة 100 واط يرفع حرارتها بنحو 2.4 °م في الدقيقة. استخدمه لاختبار الحدود والإنذارات والفصل بسرعة.',
+  'Hypothetical mode': 'وضع افتراضي',
+  'Extreme Test is outside realistic limits: the air can heat far beyond what a real room reaches and beyond the rated range of the DHT22 sensor (−40…80 °C). Above 80 °C the simulated DHT22 keeps reporting 80.0 °C, as the real sensor cannot measure more. Do not draw real-world conclusions from this mode.': 'وضع الاختبار المتطرف خارج الحدود الواقعية: قد ترتفع حرارة الهواء أكثر بكثير مما تبلغه غرفة حقيقية، وأكثر من المدى المقنن لحساس DHT22 (من −40 إلى 80 °م). فوق 80 °م يستمر حساس DHT22 المحاكى في إظهار 80.0 °م لأن الحساس الحقيقي لا يقيس أكثر من ذلك. لا تستخلص من هذا الوضع نتائج للعالم الحقيقي.',
+  'Air is now': 'حرارة الهواء الآن',
+  'above the DHT22 range; it reports 80.0 °C.': 'أعلى من مدى DHT22، فهو يُظهر 80.0 °م.',
+  'Room air: one thermal mass set by the heating simulation mode (Realistic 150 kJ/K, Training 12 kJ/K, Extreme Test 2.5 kJ/K), 1 h exchange with outdoors, 5 min with the fan on.': 'هواء الغرفة: كتلة حرارية واحدة يحددها وضع محاكاة التدفئة (واقعي 150 كيلوجول/كلفن، تدريبي 12 كيلوجول/كلفن، اختبار متطرف 2.5 كيلوجول/كلفن)، وتبادل مع الخارج خلال ساعة، و5 دقائق عند تشغيل المروحة.',
 };

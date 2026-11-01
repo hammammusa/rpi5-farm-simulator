@@ -1,8 +1,24 @@
-import { FARM_ROLE_LABELS, type FarmConfig, type FarmRole } from '../../engine/farm';
+import { FARM_ROLE_LABELS, HEATING_MODES, THERMAL_MASS, heatingModeOf, type FarmConfig, type FarmRole, type HeatingMode } from '../../engine/farm';
 import { cancelFastForward, fastForward, sim, useSimVersion } from '../../state/engine';
 import { useApp } from '../../state/store';
 import { alarmText, useT } from '../../i18n';
 import { Dock } from '../Dock';
+
+/** what each heating simulation mode means for the room air (rates for a 100 W heater, fan off) */
+const HEATING_INFO: Record<HeatingMode, { label: string; help: string }> = {
+  realistic: {
+    label: 'Realistic',
+    help: 'Room air of a small real grow room (150 kJ/K). A 100 W heater warms it by only about 0.04 °C per minute.',
+  },
+  training: {
+    label: 'Training',
+    help: 'Lighter room air (12 kJ/K): a 100 W heater warms it by about 0.5 °C per minute, so heating and control programs show visible results within minutes.',
+  },
+  extreme: {
+    label: 'Extreme Test',
+    help: 'Very light room air (2.5 kJ/K): a 100 W heater warms it by about 2.4 °C per minute. Use it to test limits, alarms and cut-offs quickly.',
+  },
+};
 
 function nextTime(hh: number, mm = 0) {
   const d = new Date(sim.clock.nowMs());
@@ -42,6 +58,7 @@ export default function FarmTab() {
   const plantSize = 0.6 + Math.min(1, s.totals.circulatedL / 2000) * 0.6;
   const stressed = s.stress.length > 0;
   const tankH = 120;
+  const heating = heatingModeOf(cfg);
 
   return (
     <div className="farm-tab">
@@ -251,11 +268,42 @@ export default function FarmTab() {
           );
         })}
 
+        <div className="panel-title sub">{t('Heating simulation mode')}</div>
+        <label className="prop-row">
+          <span>{t('Room air thermal mass')}</span>
+          <select value={heating} onChange={(e) => set((c) => (c.heatingMode = e.target.value as HeatingMode))} data-testid="farm-heating-mode">
+            {HEATING_MODES.map((m) => (
+              <option key={m} value={m}>
+                {t(HEATING_INFO[m].label)} — THERMAL_MASS = {THERMAL_MASS[m]} J/K
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="muted small" data-testid="farm-heating-info">
+          {t(HEATING_INFO[heating].help)}
+        </p>
+        {heating === 'extreme' && (
+          <div className="issue issue-warning" data-testid="farm-extreme-warning">
+            <div className="issue-title">⚠ {t('Hypothetical mode')}</div>
+            <div className="issue-explain">
+              {t('Extreme Test is outside realistic limits: the air can heat far beyond what a real room reaches and beyond the rated range of the DHT22 sensor (−40…80 °C). Above 80 °C the simulated DHT22 keeps reporting 80.0 °C, as the real sensor cannot measure more. Do not draw real-world conclusions from this mode.')}
+              {s.air.temp > 80 && (
+                <>
+                  <br />
+                  <b data-testid="farm-dht-limit">
+                    {t('Air is now')} {s.air.temp.toFixed(1)} °C — {t('above the DHT22 range; it reports 80.0 °C.')}
+                  </b>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="panel-title sub">{t('Scenario controls (live)')}</div>
         <Slider label={t('Reservoir level')} unit="%" min={0} max={100} value={level} onChange={(v) => setLive(() => (r.volumeL = (cfg.reservoir.capacityL * v) / 100))} testid="farm-level" />
         <Slider label="EC" unit="mS/cm" min={0} max={5} step={0.05} value={r.ec} onChange={(v) => setLive(() => (r.ec = v))} />
         <Slider label="pH" unit="" min={3} max={9} step={0.05} value={r.ph} onChange={(v) => setLive(() => (r.ph = v))} />
-        <Slider label={t('Air temperature')} unit="°C" min={0} max={45} step={0.5} value={s.air.temp} onChange={(v) => setLive(() => (s.air.temp = v))} testid="farm-airtemp" />
+        <Slider label={t('Air temperature')} unit="°C" min={0} max={heating === 'extreme' ? 150 : 45} step={0.5} value={s.air.temp} onChange={(v) => setLive(() => (s.air.temp = v))} testid="farm-airtemp" />
         <Slider label={t('Humidity')} unit="%" min={5} max={99} value={s.air.humidity} onChange={(v) => setLive(() => (s.air.humidity = v))} />
         <Slider label="CO₂" unit="ppm" min={300} max={3000} step={10} value={s.air.co2} onChange={(v) => setLive(() => (s.air.co2 = v))} />
         <Slider label={t('Outdoor temperature')} unit="°C" min={-10} max={45} step={0.5} value={cfg.env.outdoorTemp} onChange={(v) => set((c) => (c.env.outdoorTemp = v))} />
@@ -281,7 +329,7 @@ export default function FarmTab() {
             <li>{t('Perfectly mixed reservoir; EC mixes linearly by volume with the stock-solution EC.')}</li>
             <li>{t('Each ml of A or B per litre lowers pH by 0.15; pH-down lowers 0.6 per ml/L (linear, clamped 3–9).')}</li>
             <li>{t('Plants take up water at a constant rate; EC drifts −0.05/day and pH +0.1/day.')}</li>
-            <li>{t('Room air: one thermal mass (150 kJ/K), 1 h exchange with outdoors, 5 min with the fan on.')}</li>
+            <li>{t('Room air: one thermal mass set by the heating simulation mode (Realistic 150 kJ/K, Training 12 kJ/K, Extreme Test 2.5 kJ/K), 1 h exchange with outdoors, 5 min with the fan on.')}</li>
             <li>{t('Pump flow = rated flow × electrical run fraction; no flow when the reservoir is below the intake (dry run) or the pump is faulted.')}</li>
             <li>{t('This is a training model, not an agronomic or chemical simulation. Dosing accuracy is best at ≤10× speed.')}</li>
           </ul>

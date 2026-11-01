@@ -384,4 +384,81 @@ while True:
     expect(warnedAfterRead).toBe(false);
     expect(h.sim.issues.some((i) => i.code === 'W_CODE_PIN_MISMATCH')).toBe(false);
   }, 60000);
+
+  describe('heating simulation mode with a real thermostat program', () => {
+    /** DHT22 reading the farm air, a relay switching a 60 W heater that heats the farm room */
+    const thermostatDoc = (mode: 'realistic' | 'training' | 'extreme') => {
+      const d = new CircuitBuilder()
+        .add('pi', 'rpi5', 0, 0)
+        .add('dht', 'dht22', 400, 0, { source: 'farm' })
+        .add('rl', 'relay_module', 400, 200, { channels: 1 })
+        .add('ps', 'power_supply', 700, 200, { volts: 12, amps: 5 })
+        .add('heater', 'heater', 700, 400, { vrated: 12 })
+        .wire('pi.P1', 'dht.VCC').wire('pi.P7', 'dht.DATA').wire('dht.GND', 'pi.P9')
+        .wire('pi.P2', 'rl.VCC').wire('rl.GND', 'pi.P6').wire('pi.P11', 'rl.IN1')
+        .wire('ps.N', 'pi.P14').wire('ps.P', 'rl.COM1').wire('rl.NO1', 'heater.P').wire('heater.N', 'ps.N')
+        .doc();
+      d.farm.enabled = true;
+      d.farm.heatingMode = mode;
+      d.farm.env.outdoorTemp = d.farm.initial.airTemp;
+      return d;
+    };
+    const THERMOSTAT = `import time, board, adafruit_dht
+from gpiozero import OutputDevice
+dht = adafruit_dht.DHT22(board.D4)
+heater = OutputDevice(17, active_high=False)
+heater.on()
+print("heater on")
+while True:
+    try:
+        t = dht.temperature
+    except RuntimeError:
+        time.sleep(2.1)
+        continue
+    if t >= 30 and heater.value:
+        heater.off()
+        print(f"air {t:.1f} -> target reached, heater off")
+    time.sleep(5)
+`;
+    for (const [mode, seconds] of [['extreme', 400], ['training', 1500]] as const) {
+      it(`${mode}: the DHT22 sees the heating and the program switches the relay off at 30 °C`, async () => {
+        const h = new Harness(thermostatDoc(mode));
+        let wasOn = false;
+        let onAtEnd: boolean | undefined;
+        h.onWait = (hh) => {
+          onAtEnd = hh.sim.vis.get('rl')?.ch?.[0]?.energised;   // the last value is the state while running
+          wasOn ||= !!onAtEnd;
+        };
+        const r = await h.run(THERMOSTAT, { seconds });
+        expect(r.stdout).toMatch(/heater on[\s\S]*air 3\d\.\d -> target reached, heater off/);
+        expect(wasOn).toBe(true);
+        expect(onAtEnd).toBe(false);
+        expect(h.sim.farm.state.air.temp).toBeGreaterThan(29.5);
+      }, 120000);
+    }
+    it('realistic: the same heater barely changes the room in the same time', async () => {
+      const h = new Harness(thermostatDoc('realistic'));
+      let onAtEnd: boolean | undefined;
+      h.onWait = (hh) => (onAtEnd = hh.sim.vis.get('rl')?.ch?.[0]?.energised);
+      const r = await h.run(THERMOSTAT, { seconds: 400 });
+      expect(r.stdout).not.toMatch(/target reached/);
+      expect(onAtEnd).toBe(true);
+      expect(h.sim.farm.state.air.temp).toBeLessThan(25.3);   // 60 W × 400 s / 150 kJ/K ≈ 0.16 °C
+    }, 120000);
+    it('extreme: above 80 °C the DHT22 keeps working and reports the end of its range', async () => {
+      const h = new Harness(thermostatDoc('extreme'));
+      h.onWait = (hh) => {
+        if (hh.now() - hh.t0 > 1) hh.sim.farm.state.air.temp = 120;
+      };
+      const r = await h.run(
+        `import time, board, adafruit_dht
+dht = adafruit_dht.DHT22(board.D4)
+time.sleep(2.5)
+print("DHT22 reads", dht.temperature)
+`,
+        { seconds: 5 },
+      );
+      expect(r.stdout).toContain('DHT22 reads 80.0');
+    }, 60000);
+  });
 });

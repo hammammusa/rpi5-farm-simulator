@@ -1195,8 +1195,10 @@ export class Simulator {
         T = Math.round(Math.max(0, Math.min(50, T)));
         H = Math.round(Math.max(20, Math.min(90, H)));
       } else {
-        T = Math.round(T * 10) / 10;
-        H = Math.round(H * 10) / 10;
+        // the DHT22 / AM2302 measures −40…80 °C and 0–100 %RH; beyond that (e.g. the farm's
+        // hypothetical Extreme Test heating) it reports the end of its range
+        T = Math.round(Math.max(-40, Math.min(80, T)) * 10) / 10;
+        H = Math.round(Math.max(0, Math.min(100, H)) * 10) / 10;
       }
       // wrong driver class: the 40 data bits are decoded with the other sensor's format
       if (want && want !== kind) {

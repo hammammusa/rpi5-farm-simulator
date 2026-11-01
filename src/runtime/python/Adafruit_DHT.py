@@ -23,7 +23,7 @@ def read(sensor, pin, platform=None):
         return None, None
     if sensor == DHT11:
         return float(round(r['humidity'])), float(round(r['temperature']))
-    return r['humidity'], r['temperature']
+    return float(r['humidity']), float(r['temperature'])
 
 
 def read_retry(sensor, pin, retries=15, delay_seconds=2, platform=None):
