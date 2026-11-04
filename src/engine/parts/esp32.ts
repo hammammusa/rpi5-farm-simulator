@@ -98,6 +98,7 @@ export const esp32: PartManifest = {
       if (!g) continue;
       const n = ctx.node(p.pin);
       if (g.mode === 'output' || g.mode === 'pwm') ctx.V(`g${p.num}`, n, GND, ctx.sim.pinPhase(id, p.num) ? 3.3 : 0, RINT);
+      else if (g.mode === 'alt' && g.alt?.endsWith(' TX')) ctx.V(`tx${p.num}`, n, GND, 3.3, RINT); // UART TX idles HIGH
       else if (g.pull === 'up') ctx.V(`pu${p.num}`, n, GND, 3.3, RPULL);
       else if (g.pull === 'down') ctx.R(`pd${p.num}`, n, GND, RPULL);
     }

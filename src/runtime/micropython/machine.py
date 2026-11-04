@@ -1,7 +1,7 @@
 # machine module for the simulated ESP32-DevKitC V4 (MicroPython ESP32-port API).
 # Every call goes to the simulator, which applies it to the board's own pins and the real
 # circuit. Implemented: Pin (IN/OUT/OPEN_DRAIN, PULL_UP/PULL_DOWN, irq), PWM, ADC, I2C/SoftI2C,
-# Timer (software timers), freq, unique_id, reset, idle. Not implemented: UART, SPI, RTC,
+# UART (any TX/RX pins), Timer (software timers), freq, unique_id, reset, idle. Not implemented: SPI, RTC,
 # deepsleep/lightsleep, WDT, Signal, touch, RMT — they raise NotImplementedError.
 import _sched
 from _sched import call, post
@@ -209,6 +209,82 @@ class SoftI2C(I2C):
         call('i2c.open', sda=self._sda, scl=self._scl)
 
 
+class UART:
+    INV_TX = 1
+    INV_RX = 2
+    _DEFAULT = {0: (1, 3), 1: (10, 9), 2: (17, 16)}
+
+    def __init__(self, id, baudrate=115200, bits=8, parity=None, stop=1, **kw):
+        if id not in (0, 1, 2):
+            raise ValueError('UART(%s) does not exist' % id)
+        self._n = id
+        self._open = False
+        self.init(baudrate, bits, parity, stop, **kw)
+
+    def init(self, baudrate=115200, bits=8, parity=None, stop=1, *, tx=None, rx=None, timeout=0, timeout_char=0, rxbuf=256, txbuf=256, **kw):
+        dtx, drx = self._DEFAULT[self._n]
+        self._tx = tx._id if isinstance(tx, Pin) else (dtx if tx is None else int(tx))
+        self._rx = rx._id if isinstance(rx, Pin) else (drx if rx is None else int(rx))
+        self._baud = baudrate
+        self._timeout = timeout
+        call('uart.open', n=self._n, tx=self._tx, rx=self._rx, baud=baudrate)
+        self._open = True
+
+    def deinit(self):
+        if self._open:
+            call('uart.close', n=self._n)
+            self._open = False
+
+    def any(self):
+        return call('uart.any', n=self._n)
+
+    def _wait(self, n):
+        if self._timeout <= 0:
+            return
+        end = _sched.now_ms() + self._timeout
+        while self.any() < n and _sched.now_ms() < end:
+            _sched.wait_ms(min(5, end - _sched.now_ms()))
+
+    def read(self, nbytes=None):
+        self._wait(1 if nbytes is None else nbytes)
+        r = call('uart.read', n=self._n, max=4096 if nbytes is None else nbytes)
+        return bytes(r['d']) if r['d'] else None
+
+    def readinto(self, buf, nbytes=None):
+        n = len(buf) if nbytes is None else nbytes
+        data = self.read(n)
+        if not data:
+            return None
+        for i in range(len(data)):
+            buf[i] = data[i]
+        return len(data)
+
+    def readline(self):
+        out = b''
+        end = _sched.now_ms() + self._timeout
+        while True:
+            r = call('uart.read', n=self._n, max=1)
+            if r['d']:
+                out += bytes(r['d'])
+                if r['d'][0] == 10:
+                    return out
+            elif self._timeout <= 0 or _sched.now_ms() >= end:
+                return out or None
+            else:
+                _sched.wait_ms(min(5, end - _sched.now_ms()))
+
+    def write(self, buf):
+        if isinstance(buf, str):
+            buf = buf.encode()
+        return call('uart.write', n=self._n, d=list(buf))
+
+    def flush(self):
+        _sched.wait_ms(0)
+
+    def txdone(self):
+        return True
+
+
 class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
@@ -266,7 +342,6 @@ def _missing(name):
     return _M
 
 
-UART = _missing('UART')
 SPI = _missing('SPI')
 SoftSPI = _missing('SoftSPI')
 RTC = _missing('RTC')

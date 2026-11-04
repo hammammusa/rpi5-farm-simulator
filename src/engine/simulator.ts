@@ -110,7 +110,8 @@ export class Simulator {
   issues: Issue[] = [];
   devices = new Map<string, DeviceModel>();
   claims = new Map<number, string>();
-  uarts = new Map<string, { baud: number; port: string }>();
+  /** open UARTs: the Pi's by canonical name (UART0…), a microcontroller's as "<id>:UART<n>" */
+  uarts = new Map<string, { baud: number; port: string; ctrl?: string; tx?: number; rx?: number }>();
   rxq = new Map<string, { t: number; b: number }[]>();
   events: PyEvent[] = [];
   watchers = new Map<number, { last: 0 | 1 | null; bounceMs: number; lastEdgeT: number; pulse: boolean }>();
@@ -957,6 +958,16 @@ export class Simulator {
     this.evaluate();
   }
 
+  /** TX/RX nets of an open UART (Pi header pins or a microcontroller's own pins) */
+  private uartNets(u: { port: string; ctrl?: string; tx?: number; rx?: number }) {
+    if (u.ctrl) {
+      const nets = this.net.boardNet.get(u.ctrl);
+      return { tx: nets?.get(u.tx!), rx: nets?.get(u.rx!) };
+    }
+    const def = UART_PORTS[u.port] ?? UART_PORTS['/dev/serial0'];
+    return { tx: this.net.gpioNet.get(def.tx), rx: this.net.gpioNet.get(def.rx) };
+  }
+
   uartSetBaud(port: string, baud: number) {
     const u = this.uarts.get(this.canon(port));
     if (u) u.baud = baud;
@@ -975,12 +986,14 @@ export class Simulator {
 
   uartWrite(port: string, bytes: number[], t = this.clock.now()) {
     this.requirePi();
-    const c = this.canon(port);
+    this.uartSend(this.canon(port), bytes, t);
+  }
+
+  private uartSend(c: string, bytes: number[], t: number) {
     const u = this.uarts.get(c);
     if (!u) throw new SimError('PortNotOpenError', 'Attempting to use a port that is not open');
-    const def = UART_PORTS[port] ?? UART_PORTS['/dev/serial0'];
-    const txNet = this.net.gpioNet.get(def.tx);
-    const rxNet = this.net.gpioNet.get(def.rx);
+    const { tx: txNet, rx: rxNet } = this.uartNets(u);
+    const who = u.ctrl ? 'MCU' : 'Pi';
     const dur = (bytes.length * 10) / u.baud;
     let delivered = false;
     if (txNet !== undefined) {
@@ -1003,7 +1016,7 @@ export class Simulator {
         }
         const devBaud = dev.uartBaud?.() ?? 9600;
         const data = devBaud === u.baud ? bytes : garble(bytes);
-        this.pushUartLog({ t, port: c, dir: 'tx', bytes: [...bytes], peer: name, note: devBaud === u.baud ? undefined : `baud mismatch: Pi ${u.baud}, device ${devBaud}` });
+        this.pushUartLog({ t, port: c, dir: 'tx', bytes: [...bytes], peer: name, note: devBaud === u.baud ? undefined : `baud mismatch: ${who} ${u.baud}, device ${devBaud}` });
         dev.uartReceive(data, t + dur);
         delivered = true;
       }
@@ -1011,7 +1024,17 @@ export class Simulator {
         const q = this.rxq.get(c)!;
         bytes.forEach((b, i) => q.push({ t: t + ((i + 1) * 10) / u.baud, b }));
         delivered = true;
-        this.onPythonEvent();
+        if (!u.ctrl) this.onPythonEvent();
+      }
+      // microcontroller ↔ Pi / microcontroller ↔ microcontroller: TX wired to another open UART's RX
+      for (const [c2, u2] of this.uarts) {
+        if (c2 === c || this.uartNets(u2).rx !== txNet) continue;
+        const data = u2.baud === u.baud ? bytes : garble(bytes);
+        const q = this.rxq.get(c2)!;
+        data.forEach((b, i) => q.push({ t: t + ((i + 1) * 10) / u.baud, b }));
+        this.pushUartLog({ t, port: c, dir: 'tx', bytes: [...bytes], peer: c2, note: u2.baud === u.baud ? undefined : `baud mismatch: ${u.baud} vs ${u2.baud}` });
+        if (!u2.ctrl) this.onPythonEvent();
+        delivered = true;
       }
     }
     if (!delivered) this.pushUartLog({ t, port: c, dir: 'tx', bytes: [...bytes], peer: '—', note: 'nothing connected to TX' });
@@ -1027,8 +1050,7 @@ export class Simulator {
     const devBaud = dev?.uartBaud?.() ?? 9600;
     let delivered = false;
     for (const [c, u] of this.uarts) {
-      const def = UART_PORTS[u.port];
-      if (this.net.gpioNet.get(def.rx) !== txNet) continue;
+      if (this.uartNets(u).rx !== txNet) continue;
       if (!this.sharesGround(compId)) {
         this.pushUartLog({ t, port: c, dir: 'rx', bytes: [...bytes], peer: name, note: 'no common GND — data lost' });
         continue;
@@ -1036,10 +1058,10 @@ export class Simulator {
       const data = devBaud === u.baud ? bytes : garble(bytes);
       const q = this.rxq.get(c)!;
       data.forEach((b, i) => q.push({ t: t + ((i + 1) * 10) / u.baud, b }));
-      this.pushUartLog({ t, port: c, dir: 'rx', bytes: [...bytes], peer: name, note: devBaud === u.baud ? undefined : `baud mismatch: Pi ${u.baud}, device ${devBaud}` });
+      this.pushUartLog({ t, port: c, dir: 'rx', bytes: [...bytes], peer: name, note: devBaud === u.baud ? undefined : `baud mismatch: ${u.ctrl ? 'MCU' : 'Pi'} ${u.baud}, device ${devBaud}` });
       delivered = true;
     }
-    if (!delivered && txNet >= 0) this.pushUartLog({ t, port: '—', dir: 'rx', bytes: [...bytes], peer: name, note: 'Pi UART not open or TX not wired to Pi RX' });
+    if (!delivered && txNet >= 0) this.pushUartLog({ t, port: '—', dir: 'rx', bytes: [...bytes], peer: name, note: 'no open UART has its RX wired to this TX' });
     if (delivered) this.onPythonEvent();
     this.notify();
   }
@@ -1408,6 +1430,7 @@ export class Simulator {
 
   controllerStart(id: string) {
     const io = this.controller(id);
+    this.closeControllerUarts(id);
     io.reset();
     io.running = true;
     this.evaluate();
@@ -1416,9 +1439,74 @@ export class Simulator {
   controllerEnd(id: string) {
     const io = this.controllers.get(id);
     if (!io) return;
+    this.closeControllerUarts(id);
     io.running = false;
     io.reset();
     this.evaluate();
+  }
+
+  private closeControllerUarts(id: string) {
+    for (const k of [...this.uarts.keys()]) if (k.startsWith(id + ':')) {
+      this.uarts.delete(k);
+      this.rxq.delete(k);
+    }
+  }
+
+  /** machine.UART / HardwareSerial on a microcontroller: any TX/RX pins (GPIO matrix) */
+  mcuUartOpen(id: string, n: number, tx: number, rx: number, baud: number, t = this.clock.now()) {
+    const io = this.requireBoard(id);
+    const key = `${id}:UART${n}`;
+    if (this.uarts.has(key)) this.mcuUartClose(id, n);
+    this.boardPin(io, tx, 'out');
+    this.boardPin(io, rx, 'in');
+    for (const p of [tx, rx]) {
+      const owner = io.claims.get(p);
+      if (owner && owner !== `UART${n}`) throw new SimError('OSError', `GPIO${p} is already used by ${owner}`);
+    }
+    io.claims.set(tx, `UART${n}`);
+    io.claims.set(rx, `UART${n}`);
+    Object.assign(io.pin(tx)!, { mode: 'alt', alt: `UART${n} TX`, pull: 'none', value: 1 });
+    Object.assign(io.pin(rx)!, { mode: 'alt', alt: `UART${n} RX`, pull: 'none' });
+    this.uarts.set(key, { baud, port: `UART${n}`, ctrl: id, tx, rx });
+    this.rxq.set(key, []);
+    this.pyEvent('bus', `${id}: UART${n} opened at ${baud} baud (TX GPIO${tx}, RX GPIO${rx})`);
+    this.evaluate(t);
+  }
+
+  mcuUartClose(id: string, n: number) {
+    const io = this.controllers.get(id);
+    const key = `${id}:UART${n}`;
+    const u = this.uarts.get(key);
+    if (!io || !u) return;
+    for (const p of [u.tx!, u.rx!]) {
+      io.claims.delete(p);
+      io.pins.set(p, freshPin(p));
+    }
+    this.uarts.delete(key);
+    this.rxq.delete(key);
+    this.evaluate();
+  }
+
+  mcuUartWrite(id: string, n: number, bytes: number[], t = this.clock.now()) {
+    const key = `${id}:UART${n}`;
+    if (!this.uarts.has(key)) throw new SimError('OSError', `UART${n} is not initialised`);
+    this.uartSend(key, bytes, t);
+  }
+
+  mcuUartRead(id: string, n: number, max: number, t = this.clock.now()): number[] {
+    const q = this.rxq.get(`${id}:UART${n}`);
+    if (!q) throw new SimError('OSError', `UART${n} is not initialised`);
+    const out: number[] = [];
+    while (q.length && q[0].t <= t && out.length < max) out.push(q.shift()!.b);
+    return out;
+  }
+
+  mcuUartAny(id: string, n: number, t = this.clock.now()) {
+    const q = this.rxq.get(`${id}:UART${n}`);
+    if (!q) return 0;
+    let k = 0;
+    for (const e of q) if (e.t <= t) k++;
+    return k;
   }
 
   /** the board pin a firmware number refers to, checked for the requested use */

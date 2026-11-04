@@ -62,6 +62,19 @@ export function mcuCall(sim: Simulator, id: string, method: string, a: any, t: n
       if (!txt || !/YES/.test(txt)) throw new SimError('OSError', '[Errno 5] EIO: CRC error or sensor not found');
       return Number(/t=(-?\d+)/.exec(txt)![1]) / 1000;
     }
+    case 'uart.open':
+      sim.mcuUartOpen(id, a.n, a.tx, a.rx, a.baud, t);
+      return null;
+    case 'uart.close':
+      sim.mcuUartClose(id, a.n);
+      return null;
+    case 'uart.write':
+      sim.mcuUartWrite(id, a.n, a.d, t);
+      return a.d.length;
+    case 'uart.read':
+      return { d: sim.mcuUartRead(id, a.n, a.max ?? 4096, t), any: sim.mcuUartAny(id, a.n, t) };
+    case 'uart.any':
+      return sim.mcuUartAny(id, a.n, t);
     case 'np.write':
       sim.mcuNeopixel(id, a.pin, a.px);
       return null;

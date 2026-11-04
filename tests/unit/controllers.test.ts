@@ -253,3 +253,151 @@ print("PRESSES", len(presses), "TICKS", len(ticks))
     expect(pwmBrightness).toBeGreaterThan(0.05);
   });
 });
+
+describe('ESP32 MicroPython controls the Smart Farm', () => {
+  it('soil sensor -> relay -> irrigation pump raises the tray moisture; DHT22 -> fan cools the room', async () => {
+    const { McuHarness } = await import('./mcuharness');
+    const d = esp()
+      .add('rl', 'relay_module', 300, 0, { channels: 2, trigger: 'high' })
+      .add('ps', 'power_supply', 500, 0, { volts: 12, amps: 10 })
+      .add('pump', 'water_pump', 600, 0, { role: 'circulation', rate: 4 })
+      .add('fan', 'fan', 600, 100, { role: 'fan' })
+      .add('soil', 'soil_moisture', 200, 300, { source: 'farm' })
+      .add('dht', 'dht22', 200, 400, { source: 'farm' })
+      .wire('esp.5V', 'rl.VCC').wire('rl.GND', 'esp.GND2').wire('esp.IO26', 'rl.IN1').wire('esp.IO27', 'rl.IN2')
+      .wire('ps.P', 'rl.COM1').wire('rl.NO1', 'pump.P').wire('pump.N', 'ps.N')
+      .wire('ps.P', 'rl.COM2').wire('rl.NO2', 'fan.P').wire('fan.N', 'ps.N').wire('ps.N', 'esp.GND1')
+      .wire('soil.VCC', 'esp.3V3').wire('soil.GND', 'esp.GND3').wire('soil.AO', 'esp.IO34')
+      .wire('dht.VCC', 'esp.3V3').wire('dht.GND', 'esp.GND3').wire('dht.DATA', 'esp.IO4')
+      .doc();
+    d.farm = { ...d.farm, enabled: true };
+    d.files.push({
+      name: 'esp/main.py',
+      content: `from machine import Pin, ADC
+import dht, time
+pump = Pin(26, Pin.OUT, value=0)
+fan = Pin(27, Pin.OUT, value=0)
+soil = ADC(Pin(34), atten=ADC.ATTN_11DB)
+air = dht.DHT22(Pin(4))
+while True:
+    volts = soil.read_uv() / 1e6
+    moisture = max(0, min(100, (2.9 - volts) / 1.6 * 100))
+    pump.value(1 if moisture < 40 else 0)
+    air.measure()
+    fan.value(1 if air.temperature() > 22 else 0)
+    print("moisture %.0f%% pump %d temp %.1f fan %d" % (moisture, pump.value(), air.temperature(), fan.value()))
+    time.sleep(2)
+`,
+    });
+    d.controllers = { esp: { language: 'micropython', main: 'esp/main.py' } };
+    const h = new McuHarness(d);
+    const m0 = h.sim.farm.read('tray.moisture');
+    let pumpRan = false;
+    let fanRan = false;
+    h.onWait = (hh) => {
+      if ((hh.sim.vis.get('pump')?.run ?? 0) > 0.5) pumpRan = true;
+      if ((hh.sim.vis.get('fan')?.run ?? 0) > 0.5) fanRan = true;
+    };
+    const r = await h.runMicroPython('esp', 30);
+    expect(r.status, r.stderr + r.error?.traceback).toBe('stopped');
+    expect(r.stdout).toMatch(/moisture \d+% pump 1/);
+    expect(pumpRan).toBe(true);
+    expect(h.sim.farm.read('tray.moisture')).toBeGreaterThan(m0 + 5);
+    expect(fanRan).toBe(true);
+    expect(r.stdout).toMatch(/fan 1/);
+  });
+});
+
+describe('ESP32 machine.UART', () => {
+  it('reads an MH-Z19B CO2 sensor on UART2 (GPIO17 TX / GPIO16 RX) with real checksums', async () => {
+    const { McuHarness } = await import('./mcuharness');
+    const d = esp()
+      .add('co2', 'mhz19b', 200, 0, { co2: 812 })
+      .wire('co2.VCC', 'esp.5V').wire('co2.GND', 'esp.GND1').wire('co2.TX', 'esp.IO16').wire('co2.RX', 'esp.IO17')
+      .doc();
+    d.files.push({
+      name: 'esp/main.py',
+      content: `from machine import UART
+import time
+u = UART(2, baudrate=9600, tx=17, rx=16, timeout=200)
+u.write(bytes([0xFF, 0x01, 0x86, 0, 0, 0, 0, 0, 0x79]))
+r = u.read(9)
+ok = r is not None and len(r) == 9 and ((0xFF - (sum(r[1:8]) & 0xFF) + 1) & 0xFF) == r[8]
+print("CO2", r[2] * 256 + r[3], "checksum ok" if ok else "bad")
+u.deinit()
+`,
+    });
+    d.controllers = { esp: { language: 'micropython', main: 'esp/main.py' } };
+    const h = new McuHarness(d);
+    const r = await h.runMicroPython('esp', 5);
+    expect(r.status, r.stderr + r.error?.traceback).toBe('ok');
+    const ppm = Number(/CO2 (\d+) checksum ok/.exec(r.stdout)?.[1]);
+    expect(Math.abs(ppm - 812)).toBeLessThan(200);
+  });
+
+  it('ESP32 talks to the Raspberry Pi over UART (ESP32 TX -> Pi RX GPIO15)', async () => {
+    const { McuHarness } = await import('./mcuharness');
+    const d = esp()
+      .add('pi', 'rpi5', 400, 0)
+      .wire('esp.IO17', 'pi.P10').wire('esp.IO16', 'pi.P8').wire('esp.GND1', 'pi.P6')
+      .doc();
+    d.files.push({ name: 'esp/main.py', content: `from machine import UART\nu = UART(2, 115200)\nu.write("hello pi\\n")\nprint("sent")\n` });
+    d.controllers = { esp: { language: 'micropython', main: 'esp/main.py' } };
+    const h = new McuHarness(d);
+    h.sim.programStart();
+    h.sim.uartOpen('/dev/serial0', 115200);
+    const r = await h.runMicroPython('esp', 2);
+    expect(r.status, r.stderr + r.error?.traceback).toBe('ok');
+    h.advance(0.1);
+    expect(String.fromCharCode(...h.sim.uartRead('/dev/serial0', 100))).toBe('hello pi\n');
+  });
+
+  it('UART on the SPI-flash pins (UART1 default) is refused with a clear error', async () => {
+    const { McuHarness } = await import('./mcuharness');
+    const d = esp().doc();
+    d.files.push({ name: 'esp/main.py', content: `from machine import UART\nu = UART(1, 9600)\n` });
+    d.controllers = { esp: { language: 'micropython', main: 'esp/main.py' } };
+    const r = await new McuHarness(d).runMicroPython('esp', 2);
+    expect(r.status).toBe('error');
+    expect(r.error?.message).toMatch(/flash/);
+    expect(r.error?.line).toBe(2);
+  });
+});
+
+describe('ESP32 1-Wire and NeoPixel', () => {
+  it('DS18B20 on GPIO15 via onewire/ds18x20 and a WS2812 strip on GPIO13 via neopixel', async () => {
+    const { McuHarness } = await import('./mcuharness');
+    const d = esp()
+      .add('t', 'ds18b20', 200, 0, { temperature: 21.5, module: true })
+      .wire('t.VCC', 'esp.3V3').wire('t.GND', 'esp.GND1').wire('t.DQ', 'esp.IO15')
+      .add('px', 'ws2812_strip', 200, 100, { count: 8 })
+      .wire('px.VCC', 'esp.5V').wire('px.GND', 'esp.GND2').wire('px.DIN', 'esp.IO13')
+      .doc();
+    d.files.push({
+      name: 'esp/main.py',
+      content: `import onewire, ds18x20, neopixel, time
+from machine import Pin
+ds = ds18x20.DS18X20(onewire.OneWire(Pin(15)))
+roms = ds.scan()
+print("found", len(roms))
+ds.convert_temp()
+time.sleep_ms(750)
+print("water %.1f" % ds.read_temp(roms[0]))
+np = neopixel.NeoPixel(Pin(13), 8)
+np.fill((0, 0, 0))
+np[0] = (255, 0, 0)
+np[7] = (0, 0, 255)
+np.write()
+`,
+    });
+    d.controllers = { esp: { language: 'micropython', main: 'esp/main.py' } };
+    const h = new McuHarness(d);
+    const r = await h.runMicroPython('esp', 5);
+    expect(r.status, r.stderr + r.error?.traceback).toBe('ok');
+    expect(r.stdout).toContain('found 1');
+    expect(r.stdout).toMatch(/water 21\.\d/);
+    const px = (h.sim as any).rtOf('px').pixels;
+    expect(px[0]).toEqual([255, 0, 0]);
+    expect(px[7]).toEqual([0, 0, 255]);
+  });
+});
