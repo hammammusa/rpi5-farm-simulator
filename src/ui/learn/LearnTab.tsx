@@ -52,6 +52,9 @@ export async function openEntry(e: LibraryEntry) {
   useApp.setState({ dirty: true });
   await saveNow();
   useApp.getState().setTab('circuit');
+  // controller projects open with the first microcontroller's program in the editor
+  const first = Object.keys(d.controllers ?? {}).find((id) => d.components.some((c) => c.id === id && c.type === 'esp32_devkitc')) ?? Object.keys(d.controllers ?? {})[0];
+  if (first) useApp.getState().setActiveController(first);
   const p = progressCache ?? loadProgress();
   progressCache = { ...p, tried: toggle(p.tried, e.id, true) };
   saveProgress(progressCache);
@@ -285,7 +288,14 @@ export default function LearnTab() {
                     {type === 'resistor' ? ` (${[...new Set(e.spec!.parts.filter((p) => p[1] === 'resistor').map((p) => `${p[2].ohms >= 1000 ? `${p[2].ohms / 1000} kΩ` : `${p[2].ohms} Ω`}`))].join(', ')})` : ''}
                   </li>
                 ))
-              : e.legacy!.parts.map((p) => <li key={p}>{p}</li>)}
+              : e.mcu
+                ? [...e.build().components.reduce((m, c) => m.set(c.type, (m.get(c.type) ?? 0) + 1), new Map<string, number>())].map(([type, n]) => (
+                    <li key={type}>
+                      {n > 1 ? `${n} × ` : ''}
+                      {getPart(type).name}
+                    </li>
+                  ))
+                : e.legacy!.parts.map((p) => <li key={p}>{p}</li>)}
           </ul>
           <h2>{t('Expected result')}</h2>
           <p>{L(e.result)}</p>
@@ -306,8 +316,8 @@ export default function LearnTab() {
             {e.scenarios().map((s) => s.expected).join(' · ')}
           </p>
           <h2>{t('Code')}</h2>
-          {(e.spec ? [{ name: 'main.py', content: e.code }, ...Object.entries(e.spec.files ?? {}).map(([name, content]) => ({ name, content }))] : e.build().files).map((f) => (
-            <details key={f.name} open={f.name === 'main.py'}>
+          {(e.spec ? [{ name: 'main.py', content: e.code }, ...Object.entries(e.spec.files ?? {}).map(([name, content]) => ({ name, content }))] : e.mcu ? e.build().files.filter((f) => f.name !== 'main.py') : e.build().files).map((f) => (
+            <details key={f.name} open={f.name === 'main.py' || !!e.mcu}>
               <summary dir="ltr">{f.name}</summary>
               <pre className="code-view" dir="ltr">
                 {f.content}

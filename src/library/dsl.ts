@@ -20,7 +20,8 @@ export type Cat =
   | 'logic'
   | 'data'
   | 'challenges'
-  | 'advanced';
+  | 'advanced'
+  | 'controllers';
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 export type Bi = [en: string, ar: string];
 
@@ -40,6 +41,7 @@ export const CATEGORIES: { id: Cat; en: string; ar: string; icon: string }[] = [
   { id: 'data', en: 'Data, time & logging', ar: 'البيانات والوقت والتسجيل', icon: '🗂' },
   { id: 'challenges', en: 'Python challenges', ar: 'تحديات بايثون', icon: '🧩' },
   { id: 'advanced', en: 'Advanced integrated projects', ar: 'مشاريع متكاملة متقدمة', icon: '🚀' },
+  { id: 'controllers', en: 'ESP32 & Wiren Board 7', ar: 'ESP32 وWiren Board 7', icon: '📡' },
 ];
 
 export interface TestEvent {

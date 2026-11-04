@@ -21,6 +21,8 @@ import { LOGIC_EXAMPLES } from './logic';
 import { DATA_EXAMPLES } from './data';
 import { CHALLENGE_EXAMPLES } from './challenges';
 import { ADVANCED_EXAMPLES } from './advanced';
+import { MCU_SPECS, type McuSpec } from './controllers';
+import { currentSim } from '../catalog/examples';
 
 export interface LibraryEntry {
   id: string;
@@ -40,6 +42,8 @@ export interface LibraryEntry {
   code: string;
   spec?: LibExample;
   legacy?: Example;
+  /** ESP32 / Wiren Board project */
+  mcu?: McuSpec;
   build(): ProjectDoc;
   scenarios(): Scenario[];
 }
@@ -105,9 +109,67 @@ function fromSpec(e: LibExample): LibraryEntry {
   };
 }
 
+/** in-app test of a controller project: run every program, apply the events, judge output and circuit */
+function mcuScenario(e: McuSpec): Scenario {
+  return {
+    id: `lib-${e.id}`,
+    name: e.title[0],
+    expected: `Output matches ${e.test.expect}${e.test.verify ? ' and the circuit check passes' : ''}`,
+    async run(h) {
+      await h.load(e.build());
+      await h.run();
+      const events = [...(e.test.events ?? [])].sort((a, b) => a.at - b.at);
+      let verdict: string | null = e.test.verify ? 'not checked' : null;
+      await h.waitSim(e.test.seconds, (now) => {
+        while (events.length && now >= events[0].at) {
+          const ev = events.shift()!;
+          if (ev.press !== undefined) currentSim().pressButton(ev.comp, ev.press);
+          if (ev.props) for (const [k, v] of Object.entries(ev.props)) h.setProp(ev.comp, k, v);
+        }
+        if (e.test.verify && now >= e.test.seconds - 0.6) verdict = e.test.verify(currentSim());
+      });
+      const out = h.term();
+      const pass = e.test.expect.test(out) && verdict === null && !h.pyError();
+      return { pass, actual: pass ? 'output and circuit as expected' : `${verdict ?? ''} ${h.pyError()?.message ?? ''}\n${out.slice(-600)}`.trim() };
+    },
+  };
+}
+
+function fromMcu(e: McuSpec): LibraryEntry {
+  let doc: ProjectDoc | null = null;
+  const d = () => (doc ??= e.build());
+  return {
+    id: e.id,
+    n: 0,
+    cat: 'controllers',
+    level: e.level,
+    minutes: e.minutes,
+    title: e.title,
+    goal: e.goal,
+    result: e.result,
+    steps: [STEP_MCU, STEP.run, e.tryIt, e.modify],
+    explain: e.explain,
+    get types() {
+      return [...new Set(d().components.map((c) => c.type))];
+    },
+    get partCount() {
+      return d().components.length;
+    },
+    code: e.code,
+    mcu: e,
+    build: () => structuredClone(d()),
+    scenarios: () => [mcuScenario(e)],
+  };
+}
+
+const STEP_MCU: Bi = [
+  'Open the example: the circuit is wired and each controller has its program in its own folder (choose the controller in the Code bar).',
+  'افتح المثال: الدائرة موصولة ولكل متحكم برنامجه في مجلده الخاص (اختر المتحكم من شريط الكود).',
+];
+
 const SPECS: LibExample[] = [...GPIO_EXAMPLES, ...SENSOR_EXAMPLES, ...MOTOR_EXAMPLES, ...DISPLAY_EXAMPLES, ...COMMS_EXAMPLES, ...SMARTHOME_EXAMPLES, ...SECURITY_EXAMPLES, ...ROBOTICS_EXAMPLES, ...INDUSTRIAL_EXAMPLES, ...FARMING_EXAMPLES, ...ENERGY_EXAMPLES, ...LOGIC_EXAMPLES, ...DATA_EXAMPLES, ...CHALLENGE_EXAMPLES, ...ADVANCED_EXAMPLES];
 
-export const LIBRARY: LibraryEntry[] = [...EXAMPLES.map(fromLegacy), ...SPECS.map(fromSpec)];
+export const LIBRARY: LibraryEntry[] = [...EXAMPLES.map(fromLegacy), ...SPECS.map(fromSpec), ...MCU_SPECS.map(fromMcu)];
 LIBRARY.forEach((e, i) => (e.n = i + 1));
 
 export function libraryEntry(id: string) {
