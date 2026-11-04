@@ -6,6 +6,7 @@
 #include "DHT.h"
 #include "DallasTemperature.h"
 #include "Adafruit_NeoPixel.h"
+#include "WiFi.h"
 
 #define EXPORT(name) __attribute__((export_name(#name)))
 
@@ -955,6 +956,8 @@ void Adafruit_NeoPixel::show() {
   hal_neopixel_show(pin_, tmp, n_);
   free(tmp);
 }
+
+WiFiClass WiFi;
 
 // ------------------------------------------------------------------ entry points for the host
 extern "C" {

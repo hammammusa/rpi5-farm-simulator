@@ -1,4 +1,6 @@
 import { SimClock } from './clock';
+import { WbSystem } from './wb/wbSystem';
+import { VirtualNetwork } from './wb/network';
 import { FarmModel, type ActuatorDrive, type FarmRole } from './farm';
 import { buildNetlist, type Netlist } from './netlist';
 import { BCM_TO_PHYS, defaultPull, I2C1, ONEWIRE_DEFAULT_PIN, SPI0, UART_PORTS, parsePinSpec } from './pi5';
@@ -112,6 +114,10 @@ export class Simulator {
   claims = new Map<number, string>();
   /** open UARTs: the Pi's by canonical name (UART0…), a microcontroller's as "<id>:UART<n>" */
   uarts = new Map<string, { baud: number; port: string; ctrl?: string; tx?: number; rx?: number }>();
+  /** Wiren Board controllers: MQTT broker + drivers, by component id */
+  wb = new Map<string, WbSystem>();
+  /** Wi-Fi stations and MQTT sessions of the microcontrollers */
+  network = new VirtualNetwork(this);
   rxq = new Map<string, { t: number; b: number }[]>();
   events: PyEvent[] = [];
   watchers = new Map<number, { last: 0 | 1 | null; bounceMs: number; lastEdgeT: number; pulse: boolean }>();
@@ -191,6 +197,8 @@ export class Simulator {
       if (def) this.controllers.set(c.id, new ControllerIO(c.id, def));
     }
     for (const id of [...this.controllers.keys()]) if (!ids.has(id) || this.comp(id)?.type === 'rpi5') this.controllers.delete(id);
+    for (const c of doc.components) if (c.type === 'wb74' && !this.wb.has(c.id)) this.wb.set(c.id, new WbSystem(this, c.id));
+    for (const id of [...this.wb.keys()]) if (this.comp(id)?.type !== 'wb74') this.wb.delete(id);
     for (const id of [...this.devices.keys()]) if (!ids.has(id)) this.devices.delete(id);
     this.farm.cfg = doc.farm;
     this.evaluate();
@@ -605,6 +613,11 @@ export class Simulator {
     }
   }
 
+  /** net id of a component pin (-1 when unconnected) */
+  pinNetOf(compId: string, pin: string) {
+    return this.pinNet(compId, pin);
+  }
+
   private pinNet(compId: string, pin: string) {
     return this.net.netOf({ comp: compId, pin });
   }
@@ -798,7 +811,7 @@ export class Simulator {
   }
 
   private runtimeIssues = new Map<string, Issue>();
-  private issueOnce(code: string, params: Record<string, string | number>, severity: Severity = 'warning', comps?: string[]) {
+  issueOnce(code: string, params: Record<string, string | number>, severity: Severity = 'warning', comps?: string[]) {
     const key = `${code}|${JSON.stringify(params)}`;
     if (!this.runtimeIssues.has(key)) {
       this.runtimeIssues.set(key, { code, severity, params, comps: comps ?? (this.net.piId ? [this.net.piId] : []), key });
@@ -813,7 +826,8 @@ export class Simulator {
     if (changed) this.notify();
   }
   getRuntimeIssues() {
-    return this.running || [...this.controllers.values()].some((c) => c.running) ? [...this.runtimeIssues.values()] : [];
+    // a powered Wiren Board always runs its drivers, even without a rules script
+    return this.running || [...this.controllers.values()].some((c) => c.running) || [...this.wb.values()].some((w) => w.powered()) ? [...this.runtimeIssues.values()] : [];
   }
 
   private detectEdges(t: number) {
@@ -911,6 +925,7 @@ export class Simulator {
       if (count) this.onPythonEvent();
     }
     for (const [id, d] of this.devices) if (d.tick && this.vis.get(id)?.powered) d.tick(t);
+    for (const w of this.wb.values()) w.tick(t);
     const farmSourced = this.doc.farm.enabled && this.doc.components.some((c) => (c.props?.source ?? '') === 'farm');
     if (need || farmSourced || this.timeVarying() || this.farm.drives.length) this.evaluate(t);
     else this.farm.advanceTo(t);
@@ -1324,20 +1339,20 @@ export class Simulator {
   }
 
   /** ROM ids of the powered, pulled-up DS18B20 sensors on this 1-Wire net */
-  w1ListNet(netId: number | undefined, pullupOhms = 10000): string[] {
+  w1ListNet(netId: number | undefined, pullupOhms = 10000, internalPullup = false): string[] {
     if (netId === undefined) return [];
     const out: string[] = [];
     for (const c of this.doc.components) {
       if (c.type !== 'ds18b20' || this.pinNet(c.id, 'DQ') !== netId) continue;
       if (!this.vis.get(c.id)?.powered || (this.propsOf(c).fault ?? 'none') === 'disconnected' || !this.sharesGround(c.id)) continue;
-      if (!this.pulledUp(netId, pullupOhms)) continue;
+      if (!internalPullup && !this.pulledUp(netId, pullupOhms)) continue;
       out.push(this.w1Id(c.id));
     }
     return out;
   }
 
-  w1Read(id: string, netId?: number): string | null {
-    if (!(netId === undefined ? this.w1List() : this.w1ListNet(netId)).includes(id)) return null;
+  w1Read(id: string, netId?: number, internalPullup = false): string | null {
+    if (!(netId === undefined ? this.w1List() : this.w1ListNet(netId, 10000, internalPullup)).includes(id)) return null;
     const c = this.doc.components.find((x) => x.type === 'ds18b20' && this.w1Id(x.id) === id)!;
     const fault = this.propsOf(c).fault ?? 'none';
     let milli = Math.round(this.sensorValue(c, 'temperature') * 16) * 62.5;
@@ -1440,6 +1455,7 @@ export class Simulator {
     const io = this.controllers.get(id);
     if (!io) return;
     this.closeControllerUarts(id);
+    this.network.dropController(id);
     io.running = false;
     io.reset();
     this.evaluate();
@@ -1758,6 +1774,8 @@ export class Simulator {
   }
 
   resetSimulation() {
+    for (const w of this.wb.values()) w.reset();
+    this.network.reset();
     this.rt.clear();
     this.devices.clear();
     this.powerState.clear();

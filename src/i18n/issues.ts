@@ -335,6 +335,26 @@ Object.assign(ISSUE_TEXT, {
     en: { title: 'Code reads {pin}, but nothing matching is wired there', explain: '{hint}. Change the pin number in the code or move the wire.' },
     ar: { title: 'الكود يقرأ {pin} ولا يوجد حساس مطابق موصول به', explain: '{hint}. غيّر رقم الطرف في الكود أو انقل السلك.' },
   },
+  E_WB_OVERVOLTAGE: {
+    en: { title: 'Wiren Board supply too high: {v} V', explain: 'The Wiren Board 7.4 accepts 9…48 V DC on V+. Above that its input stage is damaged; use a 12 V or 24 V DC supply.' },
+    ar: { title: 'جهد تغذية Wiren Board مرتفع جداً: {v} فولت', explain: 'يقبل Wiren Board 7.4 جهداً مستمراً من 9 إلى 48 فولت على V+. فوق ذلك تتلف دارة الدخل؛ استخدم مزود 12 أو 24 فولت.' },
+  },
+  W_WB_UNDERVOLTAGE: {
+    en: { title: 'Wiren Board supply too low: {v} V (needs 9…48 V)', explain: 'Below 9 V the controller does not start: no MQTT broker, no drivers, no rules. Connect a 12 V or 24 V DC supply to V+ and GND.' },
+    ar: { title: 'جهد تغذية Wiren Board منخفض: {v} فولت (يحتاج 9…48 فولت)', explain: 'تحت 9 فولت لا يعمل المتحكم: لا وسيط MQTT ولا مشغلات ولا قواعد. وصّل مزود 12 أو 24 فولت مستمر إلى V+ وGND.' },
+  },
+  W_WB_OUT_OVERCURRENT: {
+    en: { title: '{ch}: output current {a} A above the {max} A rating — protection switched it off', explain: 'A1–A4 are open-collector outputs for small loads (relay coils, indicator lamps, small pumps up to 1 A). Drive bigger loads (heaters, motors) through a relay or contactor.' },
+    ar: { title: '{ch}: تيار الخرج {a} أمبير يتجاوز الحد {max} أمبير — أطفأته الحماية', explain: 'المخارج A1–A4 من نوع المجمّع المفتوح للأحمال الصغيرة (ملفات المرحلات، اللمبات، المضخات الصغيرة حتى 1 أمبير). شغّل الأحمال الكبيرة (السخانات والمحركات) عبر مرحل أو كونتاكتور.' },
+  },
+  E_WB_INPUT_OVERVOLTAGE: {
+    en: { title: '{ch}: {v} V is above the {max} V measuring range', explain: 'The A1–A4 inputs measure 0…36.3 V. A higher voltage damages the input; use a voltage divider.' },
+    ar: { title: '{ch}: الجهد {v} فولت أعلى من مدى القياس {max} فولت', explain: 'تقيس المداخل A1–A4 من 0 إلى 36.3 فولت. الجهد الأعلى يتلف المدخل؛ استخدم مقسم جهد.' },
+  },
+  W_WB_OUT_VOLTAGE: {
+    en: { title: '{ch}: {v} V on an output rated for {max} V', explain: 'The open-collector outputs switch loads up to 30 V DC. Use a relay for higher voltages.' },
+    ar: { title: '{ch}: جهد {v} فولت على مخرج مقنن لـ {max} فولت', explain: 'تبدّل المخارج ذات المجمّع المفتوح أحمالاً حتى 30 فولت مستمر. استخدم مرحلاً للجهود الأعلى.' },
+  },
   W_MCU_DHT_TYPE: {
     en: { title: 'Code reads a {want}, but the sensor on {pin} is a {kind}', explain: 'The DHT11 and DHT22 encode their data differently, so the wrong driver returns wrong numbers without an error. Use the {kind} class.' },
     ar: { title: 'الكود يقرأ {want} بينما الحساس على {pin} من نوع {kind}', explain: 'يرمّز DHT11 وDHT22 بياناتهما بشكل مختلف، لذلك يعيد الصنف الخاطئ أرقاماً خاطئة دون ظهور خطأ. استخدم الصنف {kind}.' },

@@ -1,6 +1,7 @@
 import type { PartManifest } from './base';
 import { pi5 } from './pi5';
 import { esp32 } from './esp32';
+import { wb74, wbMr6c } from './wb74';
 import * as basic from './basic';
 import * as act from './actuators';
 import * as sen from './sensors';
@@ -16,6 +17,8 @@ import { applyCatalog } from '../../catalog/registry';
 export const PARTS: PartManifest[] = [
   pi5,
   esp32,
+  wb74,
+  wbMr6c,
   basic.breadboard,
   basic.led,
   basic.rgbLed,

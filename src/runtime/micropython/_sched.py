@@ -44,7 +44,8 @@ def _run_events():
                     handler(pin)
         elif k == 'mqtt':
             for c in _mqtt:
-                c._deliver(e['topic'], e['payload'])
+                if e.get('client') in (None, c.client_id):
+                    c._deliver(e['topic'], e['payload'])
 
 
 def _run_timers(now):
@@ -82,5 +83,5 @@ def wait_ms(ms):
 
 
 def busy():
-    """True while interrupts, timers or MQTT callbacks can still do work."""
-    return bool(_irq) or bool(_timers) or any(c._cb for c in _mqtt)
+    """True while pin interrupts or timers can still run code."""
+    return bool(_irq) or bool(_timers)

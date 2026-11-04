@@ -12,6 +12,8 @@ import DHT_H from './core/DHT.h?raw';
 import ONEWIRE_H from './core/OneWire.h?raw';
 import DALLAS_H from './core/DallasTemperature.h?raw';
 import NEOPIXEL_H from './core/Adafruit_NeoPixel.h?raw';
+import WIFI_H from './core/WiFi.h?raw';
+import PUBSUB_H from './core/PubSubClient.h?raw';
 import CORE_CPP from './core/core.cpp?raw';
 import { StopSignal, type McuHostIO, type McuRunResult } from '../mcu/mpHost';
 import type { PyErrorInfo } from '../protocol';
@@ -27,11 +29,13 @@ export const ARDUINO_CORE: Record<string, string> = {
   'OneWire.h': ONEWIRE_H,
   'DallasTemperature.h': DALLAS_H,
   'Adafruit_NeoPixel.h': NEOPIXEL_H,
+  'WiFi.h': WIFI_H,
+  'PubSubClient.h': PUBSUB_H,
   'core.cpp': CORE_CPP,
 };
 
 /** headers a sketch may include (everything else fails with "file not found", as on a real toolchain without that library) */
-export const ARDUINO_LIBRARIES = ['Arduino.h', 'Wire.h', 'DHT.h', 'OneWire.h', 'DallasTemperature.h', 'Adafruit_NeoPixel.h'];
+export const ARDUINO_LIBRARIES = ['Arduino.h', 'Wire.h', 'DHT.h', 'OneWire.h', 'DallasTemperature.h', 'Adafruit_NeoPixel.h', 'WiFi.h', 'PubSubClient.h'];
 
 export type RunClang = (args: string[], files: Record<string, any>, opts?: { stdout?: (b: Uint8Array | null) => void; stderr?: (b: Uint8Array | null) => void }) => Promise<Record<string, any>>;
 
@@ -443,8 +447,11 @@ export async function runArduino(wasm: Uint8Array, io: McuHostIO): Promise<McuRu
   };
   // Wi-Fi / MQTT calls go to the simulator's virtual network
   const net: Record<string, (...a: number[]) => any> = {
-    wifi_begin: (ssid, pass) => call('wifi.connect', { ssid: str(ssid), password: str(pass) }),
-    wifi_status: () => call('wifi.status', {}),
+    wifi_begin: (ssid, pass) => {
+      call('wifi.connect', { ssid: str(ssid), password: str(pass) });
+      return 0;
+    },
+    wifi_status: () => call('wifi.status', {}).wl,
     wifi_disconnect: () => call('wifi.disconnect', {}),
     wifi_ip: (buf, max) => {
       const ip = new TextEncoder().encode(String(call('wifi.ip', {}) ?? '0.0.0.0'));

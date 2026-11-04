@@ -81,6 +81,44 @@ export function mcuCall(sim: Simulator, id: string, method: string, a: any, t: n
     case 'np.write':
       sim.mcuNeopixel(id, a.pin, a.px);
       return null;
+    // ---- virtual Wi-Fi / MQTT (the Wiren Board access point and broker)
+    case 'wifi.connect':
+      sim.network.connectWifi(id, String(a.ssid ?? ''), String(a.key ?? a.password ?? ''), t);
+      return null;
+    case 'wifi.disconnect':
+      sim.network.disconnectWifi(id);
+      return null;
+    case 'wifi.status':
+      return sim.network.wifiStatus(id, t);
+    case 'wifi.ip':
+      return sim.network.wifiStatus(id, t).ip;
+    case 'wifi.rssi':
+      return sim.network.wifiStatus(id, t).rssi;
+    case 'wifi.scan':
+      return sim.network.scan();
+    case 'mqtt.connect':
+      return sim.network.mqttConnect(id, a.client, String(a.host ?? ''), Number(a.port) || 1883, t);
+    case 'mqtt.disconnect':
+      sim.network.mqttDisconnect(id, a.client);
+      return null;
+    case 'mqtt.connected':
+      return sim.network.connected(id, a.client);
+    case 'mqtt.ping':
+      if (!sim.network.connected(id, a.client)) throw new SimError('OSError', '[Errno 128] ENOTCONN (MQTT client is not connected)');
+      return null;
+    case 'mqtt.publish':
+      sim.network.publish(id, String(a.topic), String(a.payload ?? ''), !!a.retain, t, a.client);
+      return null;
+    case 'mqtt.subscribe':
+      sim.network.subscribe(id, String(a.topic), t, a.client);
+      return null;
+    case 'mqtt.unsubscribe':
+      sim.network.unsubscribe(id, String(a.topic), a.client);
+      return null;
+    case 'mqtt.next':
+      return sim.network.next(id, a.client);
+    case 'mqtt.state':
+      return sim.network.connected(id, a.client) ? 0 : -1;
     case 'events.take':
       return sim.controller(id).takeEvents().filter((e: McuEvent) => e.k !== 'stop');
     case 'board.uid': {

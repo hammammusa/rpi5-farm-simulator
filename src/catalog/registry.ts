@@ -20,6 +20,8 @@ const ADC = ['smartfarm', 'gpiozero', 'adafruit_ads1x15', 'spidev'];
 export const BASE_META: Record<string, Meta> = {
   rpi5: { group: 'Boards', fidelity: 'full', drivers: ['gpiozero', 'RPi.GPIO', 'lgpio', 'smbus2', 'spidev', 'serial', 'board', 'busio', 'digitalio'], short: 'Pi 5', model: 'Raspberry Pi 5 Model B 8GB', manufacturer: 'Raspberry Pi Ltd' },
   esp32_devkitc: { group: 'Boards', fidelity: 'functional', drivers: ['machine', 'time', 'dht', 'onewire', 'ds18x20', 'neopixel'], short: 'ESP32', model: 'ESP32-DevKitC V4 (ESP32-WROOM-32)', manufacturer: 'Espressif' },
+  wb74: { group: 'Boards', fidelity: 'functional', drivers: ['wb-rules', 'wb-mqtt-gpio', 'wb-mqtt-adc', 'wb-mqtt-w1', 'wb-mqtt-serial'], short: 'WB7', model: 'Wiren Board 7.4', manufacturer: 'Wiren Board' },
+  wb_mr6c: { group: 'Actuators & relays', fidelity: 'functional', drivers: ['wb-mqtt-serial', 'minimalmodbus'], short: 'WB-MR6C', model: 'WB-MR6C v2', manufacturer: 'Wiren Board' },
   breadboard: { group: 'Breadboard & wiring', fidelity: 'full', drivers: [], short: 'Breadboard', model: '400/830-point solderless breadboard' },
   led: { group: 'LEDs & indicators', fidelity: 'full', drivers: GPIO_OUT, short: 'LED', model: '5 mm LED', commonErrors: ['No series resistor (LED burns, GPIO over-current)', 'LED reversed (cathode/flat side to GND)', 'Wired to a different GPIO than the code uses'] },
   rgb_led: { group: 'LEDs & indicators', fidelity: 'full', drivers: GPIO_OUT, short: 'RGB LED', model: '5 mm RGB LED' },
