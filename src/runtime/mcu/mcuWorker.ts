@@ -6,6 +6,7 @@
 import { readSharedClock } from '../../engine/clock';
 import { CTL } from '../protocol';
 import { runMicroPython, StopSignal, type McuHostIO } from './mpHost';
+import { runArduino } from '../arduino/arduinoHost';
 import type { McuWorkerIn, McuWorkerOut } from './protocol';
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -98,9 +99,7 @@ self.onmessage = async (ev: MessageEvent<McuWorkerIn>) => {
   clockSeq = new Int32Array(m.shared.ctl, CTL.CLOCK_SEQ * 4, 1);
   seenSeq = Atomics.load(ctl, CTL.EVENT_SEQ);
   try {
-    if (m.lang !== 'micropython') throw new Error(`language ${m.lang} is not available in this worker`);
-    send({ type: 'status', text: 'Loading MicroPython…' });
-    const mod = await import(/* @vite-ignore */ `${m.base}micropython/micropython.mjs`);
+    if (m.lang !== 'micropython' && m.lang !== 'arduino') throw new Error(`language ${m.lang} is not available in this worker`);
     const t0 = simNow();
     const io: McuHostIO = {
       call: rpc,
@@ -118,8 +117,16 @@ self.onmessage = async (ev: MessageEvent<McuWorkerIn>) => {
         maybeFlush();
       },
     };
-    send({ type: 'started', engine: 'MicroPython 1.29 (WebAssembly port)' });
-    const r = await runMicroPython(mod.loadMicroPython, m.files, m.main, m.folder, io);
+    let r;
+    if (m.lang === 'arduino') {
+      send({ type: 'started', engine: 'Arduino sketch (Clang → WebAssembly)' });
+      r = await runArduino(m.wasm!, io);
+    } else {
+      send({ type: 'status', text: 'Loading MicroPython…' });
+      const mod = await import(/* @vite-ignore */ `${m.base}micropython/micropython.mjs`);
+      send({ type: 'started', engine: 'MicroPython 1.29 (WebAssembly port)' });
+      r = await runMicroPython(mod.loadMicroPython, m.files, m.main, m.folder, io);
+    }
     flush();
     send({ type: 'done', status: r.status, error: r.error });
   } catch (e: any) {

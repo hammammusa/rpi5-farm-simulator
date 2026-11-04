@@ -22,6 +22,7 @@ async function open(page: Page, build: string) {
   await page.evaluate(build);
 }
 
+const termText = (page: Page) => page.evaluate(() => (window as any).__rpi5sim.useApp.getState().term.map((l: any) => l.text).join(''));
 const ledBrightness = (page: Page) => page.evaluate(() => (window as any).__rpi5sim.sim.vis.get('led1')?.brightness ?? 0);
 
 test('ESP32 MicroPython blinks an LED on GPIO23 and stops cleanly', async ({ page }) => {
@@ -122,4 +123,40 @@ test('adding an ESP32 from the library creates its program folder', async ({ pag
   });
   expect(r.prog).toEqual({ language: 'micropython', main: `${r.id}/main.py` });
   expect(r.file).toContain('Pin(23, Pin.OUT)');
+});
+
+test('ESP32 Arduino C++: switch language, compile with Clang, blink GPIO23, compile error with line', async ({ page }) => {
+  test.setTimeout(240_000);
+  await open(
+    page,
+    `(() => {
+      const S = window.__rpi5sim;
+      const d = S.newProject('ESP32 Arduino');
+      Object.assign(d, ${JSON.stringify(LED_CIRCUIT())});
+      S.useApp.getState().loadProject(S.migrate(d));
+      S.useApp.getState().setDock('code', true);
+      S.useApp.getState().setActiveController('esp');
+    })()`,
+  );
+  await page.getByTestId('ctrl-lang').first().selectOption('arduino');
+  const prog = await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().doc.controllers.esp);
+  expect(prog).toEqual({ language: 'arduino', main: 'esp/main.ino' });
+  await page.getByTestId('ctrl-run').first().click();
+  await expect.poll(() => termText(page), { timeout: 180_000 }).toContain('compiled in');
+  await expect.poll(() => termText(page), { timeout: 30_000 }).toContain('LED on');
+  await expect.poll(() => ledBrightness(page), { timeout: 5_000 }).toBeGreaterThan(0.3);
+  await page.getByTestId('stop').click();
+  await expect.poll(() => termText(page), { timeout: 10_000 }).toContain('Program stopped');
+  // a syntax error: reported by Clang with the sketch's own line number
+  await page.evaluate(() => {
+    const st = (window as any).__rpi5sim.useApp.getState();
+    st.setFile('esp/main.ino', 'void setup() {\n  pinMode(23, OUTPUT)\n}\nvoid loop() {}\n');
+  });
+  await page.getByTestId('ctrl-run').first().click();
+  await expect.poll(() => page.evaluate(() => (window as any).__rpi5sim.useApp.getState().pyError?.type), { timeout: 60_000 }).toBe('CompileError');
+  await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().setDock('code', true));
+  const err = await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().pyError);
+  expect(err.file).toBe('esp/main.ino');
+  expect(err.line).toBe(2);
+  await expect(page.locator('.cm-error-line')).toHaveCount(1);
 });

@@ -7,6 +7,7 @@ import type { LanguageId } from '../../engine/boards/types';
 import { CTL, DATA_BYTES, createShared, type PyErrorInfo, type SharedBuffers } from '../protocol';
 import { mcuCall, mcuPost, type McuHooks } from './dispatch';
 import type { McuWorkerOut } from './protocol';
+import { compileSketch } from '../arduino/compiler';
 
 export type McuState = 'idle' | 'loading' | 'running' | 'stopping';
 
@@ -35,6 +36,7 @@ export class McuRuntime {
   private waiters: ((r: McuRunResult) => void)[] = [];
   private enc = new TextEncoder();
   private hooks: McuHooks;
+  private compileToken: object | null = null;
 
   constructor(
     private sim: Simulator,
@@ -62,6 +64,24 @@ export class McuRuntime {
   async run(lang: LanguageId, files: { name: string; content: string }[], main: string) {
     if (this.busy) await this.stop();
     this.lastRun = null;
+    let wasm: Uint8Array | undefined;
+    if (lang === 'arduino') {
+      this.setState('loading', 'Compiling…');
+      const token = (this.compileToken = {});
+      const r = await compileSketch(this.base, files, main, this.id, (t) => this.cb.state(this.state, t));
+      if (this.compileToken !== token) return; // stopped while compiling
+      this.compileToken = null;
+      if (r.log.trim()) this.cb.stderr(r.log.trimEnd() + '\n');
+      if (!r.ok) {
+        this.lastRun = { status: 'error', error: r.error };
+        this.setState('idle');
+        this.cb.done(this.lastRun);
+        for (const f of this.waiters.splice(0)) f(this.lastRun);
+        return;
+      }
+      this.cb.stdout(`[compiled in ${(r.ms / 1000).toFixed(1)} s, ${r.wasm!.length} bytes of WebAssembly]\n`);
+      wasm = r.wasm;
+    }
     this.shared = createShared();
     this.ctl = new Int32Array(this.shared.ctl);
     this.data = new Uint8Array(this.shared.data);
@@ -72,7 +92,7 @@ export class McuRuntime {
       Atomics.add(this.ctl, CTL.EVENT_SEQ, 1);
       Atomics.notify(this.ctl, CTL.EVENT_SEQ);
     };
-    this.setState('loading', 'Loading MicroPython…');
+    this.setState('loading', lang === 'arduino' ? 'Starting the sketch…' : 'Loading MicroPython…');
     const w = new Worker(new URL('./mcuWorker.ts', import.meta.url), { type: 'module' });
     this.worker = w;
     w.onmessage = (ev: MessageEvent<McuWorkerOut>) => this.onMessage(w, ev.data);
@@ -81,12 +101,21 @@ export class McuRuntime {
       this.cb.stderr(`[simulator] worker error: ${ev.message ?? ev}\n`);
       this.finish({ status: 'error', error: { type: 'InternalError', message: String(ev.message ?? 'worker error'), traceback: '' } });
     };
-    w.postMessage({ type: 'run', lang, base: this.base, shared: this.shared, tzOffset: -new Date().getTimezoneOffset() * 60, files, main, folder: this.id });
+    w.postMessage({ type: 'run', lang, base: this.base, shared: this.shared, tzOffset: -new Date().getTimezoneOffset() * 60, files, main, folder: this.id, wasm });
   }
 
   /** Stop the program; resolves once it has really ended. */
   stop(): Promise<void> {
     if (!this.busy) return Promise.resolve();
+    if (this.compileToken) {
+      // still compiling: nothing runs yet
+      this.compileToken = null;
+      this.lastRun = { status: 'stopped' };
+      this.setState('idle');
+      this.cb.done(this.lastRun);
+      for (const f of this.waiters.splice(0)) f(this.lastRun);
+      return Promise.resolve();
+    }
     const done = this.whenDone().then(() => undefined);
     if (this.state === 'stopping') return done;
     this.setState('stopping');

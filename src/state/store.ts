@@ -1,6 +1,6 @@
 // Application state (zustand). The project document lives here; the simulator
 // is notified of every document change. Undo/redo snapshots the editable parts.
-import { ensureControllers } from '../engine/boards';
+import { ensureControllers, setControllerLanguage, type LanguageId } from '../engine/boards';
 import { arrangeCircuit, routeWires, type ArrangeOptions } from '../engine/layout';
 import { create } from 'zustand';
 import { defaultView, newProject, uid } from '../engine/project';
@@ -106,6 +106,7 @@ interface AppState {
   termWrite(kind: TermLine['kind'], text: string, src?: string): void;
   setMcu(id: string, s: McuStatus): void;
   setActiveController(id: string): void;
+  setControllerLanguage(id: string, lang: LanguageId): void;
   termClear(): void;
   setRuntime(state: string, detail?: string): void;
   setPyError(e: PyErrorState | null): void;
@@ -423,6 +424,11 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setMcu(id, m) {
     set({ mcu: { ...get().mcu, [id]: m } });
+  },
+  setControllerLanguage(id, lang) {
+    get().edit((d) => setControllerLanguage(d, id, lang));
+    const prog = get().doc.controllers?.[id];
+    if (prog) set({ activeFile: prog.main });
   },
   setActiveController(id) {
     const prog = id ? get().doc.controllers?.[id] : null;

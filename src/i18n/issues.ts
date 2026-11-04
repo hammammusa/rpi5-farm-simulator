@@ -256,6 +256,10 @@ export const FARM_ALARM_TEXT: Record<string, Bi> = {
 };
 
 export const PY_ERROR_TEXT: Record<string, { en: string; ar: string }> = {
+  CompileError: { en: 'The C++ compiler (Clang) rejected the sketch. Fix the first error first: it is on the highlighted line (a missing ; or }, a misspelled name, a wrong type).', ar: 'رفض مترجم C++ ‏(Clang) الشيفرة. أصلح الخطأ الأول أولًا: هو في السطر المظلَّل (فاصلة منقوطة ; أو قوس } ناقص، اسم مكتوب خطأ، نوع غير صحيح).' },
+  LinkError: { en: 'The sketch calls a function that is defined nowhere: check its spelling, define it, or include the library that provides it (only the libraries listed for the ESP32 are available).', ar: 'تستدعي الشيفرة دالة غير معرَّفة في أي مكان: تحقق من كتابتها أو عرّفها أو أضف المكتبة التي توفرها (تتوفر فقط المكتبات المذكورة للوحة ESP32).' },
+  'Guru Meditation Error': { en: 'The ESP32 program crashed (like a real "Guru Meditation Error"): an array index out of range, a null pointer, a division by zero or a stack overflow from deep recursion.', ar: 'تعطّل برنامج ESP32 (مثل خطأ "Guru Meditation Error" الحقيقي): فهرس مصفوفة خارج الحدود، مؤشر فارغ، قسمة على صفر أو امتلاء المكدس بسبب استدعاء ذاتي عميق.' },
+  CompilerUnavailable: { en: 'The C++ compiler could not be downloaded. Check the internet connection and run again (it is about 105 MB and is cached after the first use).', ar: 'تعذّر تنزيل مترجم C++. تحقق من الاتصال بالإنترنت ثم شغّل مرة أخرى (حجمه نحو 105 ميغابايت ويُخزَّن بعد أول استخدام).' },
   ZeroDivisionError: { en: 'You divided by zero. Check the divisor before dividing (e.g. if count > 0).', ar: 'قسمت على صفر. تحقق من المقسوم عليه قبل القسمة (مثلاً if count > 0).' },
   NameError: { en: 'A variable or function name is not defined — check spelling, capital letters and that it is defined before use (and imported).', ar: 'اسم متغير أو دالة غير معرّف — تحقق من الإملاء والأحرف الكبيرة وأنه معرّف قبل الاستخدام (ومستورد).' },
   SyntaxError: { en: 'Python could not understand this line: look for missing colons (:), brackets, quotes or a typo.', ar: 'لم يفهم Python هذا السطر: ابحث عن نقطتين (:) أو قوس أو علامة تنصيص ناقصة أو خطأ إملائي.' },

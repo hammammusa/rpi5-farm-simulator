@@ -5,10 +5,20 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightStyle, foldGutter, indentUnit } from '@codemirror/language';
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
+import { cpp } from '@codemirror/lang-cpp';
+import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { piCompletions, piHover } from './pyComplete';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+
+/** syntax by file type: Python (Pi, MicroPython), C++ (Arduino sketches), JavaScript (wb-rules), HTML */
+function languageFor(filename: string) {
+  if (filename.endsWith('.html')) return html();
+  if (/\.(ino|cpp|cc|c|h|hpp)$/.test(filename)) return cpp();
+  if (filename.endsWith('.js')) return javascript();
+  return python();
+}
 
 const setErrorLine = StateEffect.define<number | null>();
 const errorField = StateField.define<DecorationSet>({
@@ -58,10 +68,9 @@ export function CodeEditor({ value, onChange, filename, dark, errorLine, readOnl
         closeBrackets(),
         highlightActiveLine(),
         highlightSelectionMatches(),
-        autocompletion({ override: [piCompletions], activateOnTyping: true }),
-        piHover,
-        indentUnit.of('    '),
-        EditorState.tabSize.of(4),
+        ...(filename.endsWith('.py') ? [autocompletion({ override: [piCompletions], activateOnTyping: true }), piHover] : [autocompletion()]),
+        indentUnit.of(filename.endsWith('.py') ? '    ' : '  '),
+        EditorState.tabSize.of(filename.endsWith('.py') ? 4 : 2),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         errorField,
         keymap.of([
@@ -77,7 +86,7 @@ export function CodeEditor({ value, onChange, filename, dark, errorLine, readOnl
         }),
         EditorState.readOnly.of(!!readOnly),
         themeC.current.of(dark ? oneDark : []),
-        langC.current.of(filename.endsWith('.html') ? html() : python()),
+        langC.current.of(languageFor(filename)),
         EditorView.contentAttributes.of({ 'aria-label': `Code editor: ${filename}`, dir: 'ltr' }),
       ],
     });

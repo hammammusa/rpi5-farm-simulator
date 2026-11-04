@@ -71,8 +71,8 @@ export const esp32: PartManifest = {
   support: 'full',
   limits: ESP32_DEVKITC.limits,
   voltage: '5 V USB or 5V pin (on-board 3.3 V regulator); GPIO 3.3 V, not 5 V tolerant',
-  interfaces: ['GPIO', 'ADC1/ADC2 (12-bit)', 'PWM (LEDC)', 'I2C', '1-Wire (software)'],
-  python: 'MicroPython: machine.Pin, ADC, PWM, I2C/SoftI2C, Timer, time, dht, onewire/ds18x20, neopixel',
+  interfaces: ['GPIO', 'ADC1/ADC2 (12-bit)', 'DAC (GPIO25/26)', 'PWM (LEDC)', 'I2C', 'UART0/1/2', '1-Wire (software)'],
+  python: 'MicroPython: machine.Pin, ADC, DAC, PWM, I2C/SoftI2C, UART, Timer, time, dht, onewire/ds18x20, neopixel · Arduino C++: pinMode/digitalWrite/digitalRead, analogRead(MilliVolts), ledcAttach/ledcWrite, analogWrite, dacWrite, attachInterrupt, Serial/Serial1/Serial2, Wire, DHT.h, DallasTemperature.h, Adafruit_NeoPixel.h',
   commonErrors: [
     'Using GPIO6–11 (CLK, D0–D3, CMD): they belong to the on-module SPI flash.',
     'Driving an output on GPIO34–39: these pins are input-only and have no internal pull resistors.',
@@ -99,6 +99,7 @@ export const esp32: PartManifest = {
       const n = ctx.node(p.pin);
       if (g.mode === 'output' || g.mode === 'pwm') ctx.V(`g${p.num}`, n, GND, ctx.sim.pinPhase(id, p.num) ? 3.3 : 0, RINT);
       else if (g.mode === 'alt' && g.alt?.endsWith(' TX')) ctx.V(`tx${p.num}`, n, GND, 3.3, RINT); // UART TX idles HIGH
+      else if (g.mode === 'alt' && g.alt === 'DAC') ctx.V(`dac${p.num}`, n, GND, 3.3 * g.pwmDuty, 1000); // DAC output ≈1 kΩ
       else if (g.pull === 'up') ctx.V(`pu${p.num}`, n, GND, 3.3, RPULL);
       else if (g.pull === 'down') ctx.R(`pd${p.num}`, n, GND, RPULL);
     }

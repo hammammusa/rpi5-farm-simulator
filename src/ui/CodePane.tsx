@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store';
 import { resetController, runController, runProgram, saveNow, stopController } from '../state/engine';
-import { boardDef, controllersIn, LANGUAGES, RUNNABLE_LANGUAGES } from '../engine/boards';
+import { boardDef, controllersIn, LANGUAGES, RUNNABLE_LANGUAGES, type LanguageId } from '../engine/boards';
 import { useT } from '../i18n';
 import { CodeEditor } from './Editor';
 
@@ -135,9 +135,29 @@ export function CodePane({ compact = false }: { compact?: boolean }) {
           </label>
           {ctrlComp && ctrlProg && (
             <>
-              <span className="ctrl-lang" title={LANGUAGES[ctrlProg.language].engine}>
-                {LANGUAGES[ctrlProg.language].label}
-              </span>
+              {(() => {
+                const langs = boardDef(ctrlComp.type)!.languages.filter((l) => RUNNABLE_LANGUAGES.includes(l));
+                return langs.length > 1 ? (
+                  <select
+                    className="ctrl-lang"
+                    value={ctrlProg.language}
+                    title={LANGUAGES[ctrlProg.language].engine}
+                    disabled={ctrlState !== 'idle'}
+                    onChange={(e) => st.setControllerLanguage(ctrl, e.target.value as LanguageId)}
+                    data-testid="ctrl-lang"
+                  >
+                    {langs.map((l) => (
+                      <option key={l} value={l}>
+                        {LANGUAGES[l].label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="ctrl-lang" title={LANGUAGES[ctrlProg.language].engine}>
+                    {LANGUAGES[ctrlProg.language].label}
+                  </span>
+                );
+              })()}
               {ctrlState === 'idle' ? (
                 <button className="run small" onClick={() => void runController(ctrl)} data-testid="ctrl-run" title={t('Run this controller only')}>
                   ▶ {t('Run')}
@@ -217,7 +237,7 @@ export function CodePane({ compact = false }: { compact?: boolean }) {
                       dir="ltr"
                       title={row.path}
                     >
-                      {row.path.endsWith('.py') ? '🐍' : '📄'} {row.label}
+                      {row.path.endsWith('.py') ? '🐍' : /\.(ino|cpp|h)$/.test(row.path) ? '⚙️' : '📄'} {row.label}
                       {(row.path === main || mcus.some((c) => doc.controllers![c.id].main === row.path)) && <span className="badge">main</span>}
                     </button>
                   )}

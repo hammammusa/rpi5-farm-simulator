@@ -1583,6 +1583,20 @@ export class Simulator {
     this.evaluate(t);
   }
 
+  /** ESP32 DAC (GPIO25/26): 8-bit level, 0…3.3 V */
+  mcuDac(id: string, num: number, value: number, t?: number) {
+    const io = this.requireBoard(id);
+    const p = this.boardPin(io, num, 'out');
+    if (!p.caps.dac) throw new SimError('ValueError', `GPIO${num} has no DAC (ESP32 DAC channels: GPIO25, GPIO26)`);
+    const owner = io.claims.get(num);
+    if (owner && owner !== 'DAC') throw new SimError('OSError', `GPIO${num} is already used by ${owner}`);
+    io.claims.set(num, 'DAC');
+    const g = io.pins.get(num)!;
+    Object.assign(g, { mode: 'alt', alt: 'DAC', pull: 'none', pwmDuty: Math.max(0, Math.min(255, Math.round(value))) / 255 });
+    io.dac.set(num, 3.3 * g.pwmDuty);
+    this.evaluate(t);
+  }
+
   /** digital level seen by a controller pin at time t (through the real circuit) */
   mcuReadLevel(id: string, num: number, t = this.clock.now()): { value: 0 | 1; v: number | null; floating: boolean } {
     const io = this.controller(id);

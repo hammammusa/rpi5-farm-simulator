@@ -53,9 +53,27 @@ export { ESP32_DEVKITC } from './esp32';
 export { WB74 } from './wb74';
 
 /** languages this build can actually run (a board only gets a program in one of these) */
-export const RUNNABLE_LANGUAGES: LanguageId[] = ['python', 'micropython'];
+export const RUNNABLE_LANGUAGES: LanguageId[] = ['python', 'micropython', 'arduino'];
 
 export const DEFAULT_PROGRAMS: Partial<Record<LanguageId, string>> = {
+  arduino: `// ESP32-DevKitC V4 - Arduino C++
+// Blink an LED on GPIO23 (GPIO23 -> 330 ohm -> LED -> GND)
+const int LED_PIN = 23;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(LED_PIN, HIGH);
+  Serial.println("LED on");
+  delay(1000);
+  digitalWrite(LED_PIN, LOW);
+  Serial.println("LED off");
+  delay(1000);
+}
+`,
   micropython: `# ESP32-DevKitC V4 - MicroPython
 # Blink an LED on GPIO23 (GPIO23 -> 330 ohm -> LED -> GND)
 from machine import Pin
@@ -92,4 +110,14 @@ export function ensureControllers<T extends Pick<ProjectDoc, 'components' | 'fil
     if (!files.some((f) => f.name === main)) files = [...files, { name: main, content: DEFAULT_PROGRAMS[lang] ?? '' }];
   }
   return controllers === doc.controllers && files === doc.files ? doc : { ...doc, controllers, files };
+}
+
+/** switch a controller to another of its languages; its program file is created if needed (existing files are kept) */
+export function setControllerLanguage<T extends Pick<ProjectDoc, 'components' | 'files' | 'controllers'>>(doc: T, id: string, lang: LanguageId): T {
+  const c = doc.components.find((k) => k.id === id);
+  const def = c && boardDef(c.type);
+  if (!def || !def.languages.includes(lang) || !RUNNABLE_LANGUAGES.includes(lang)) return doc;
+  const main = `${id}/main${LANGUAGES[lang].ext}`;
+  const files = doc.files.some((f) => f.name === main) ? doc.files : [...doc.files, { name: main, content: DEFAULT_PROGRAMS[lang] ?? '' }];
+  return { ...doc, files, controllers: { ...(doc.controllers ?? {}), [id]: { language: lang, main } } };
 }

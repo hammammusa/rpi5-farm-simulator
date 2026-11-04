@@ -37,6 +37,9 @@ export function mcuCall(sim: Simulator, id: string, method: string, a: any, t: n
     case 'pwm.set':
       sim.mcuPwm(id, a.pin, a.freq, a.duty, t);
       return null;
+    case 'dac.write':
+      sim.mcuDac(id, a.pin, a.v, t);
+      return null;
     case 'adc.check':
       sim.boardPin(sim.controller(id), a.pin, 'adc');
       return null;

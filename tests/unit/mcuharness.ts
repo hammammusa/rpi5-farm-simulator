@@ -5,6 +5,14 @@ import { Simulator, SimError } from '../../src/engine/simulator';
 import type { ProjectDoc } from '../../src/engine/types';
 import { mcuCall, mcuPost } from '../../src/runtime/mcu/dispatch';
 import { runMicroPython, StopSignal, type McuHostIO, type McuRunResult } from '../../src/runtime/mcu/mpHost';
+import { compileArduino, runArduino, type CompileResult } from '../../src/runtime/arduino/arduinoHost';
+
+let clang: any = null;
+/** real Clang/LLD (YoWASP, LLVM 22 compiled to WebAssembly) */
+export async function runClang(...a: any[]) {
+  clang ??= await import('@yowasp/clang');
+  return clang.runClang(...a);
+}
 
 export class McuHarness {
   wall = 0;
@@ -73,6 +81,27 @@ export class McuHarness {
       stdout: (t) => (this.stdout += t),
       stderr: (t) => (this.stderr += t),
     };
+  }
+
+  /** compile and run the Arduino sketch of controller `id` for at most `seconds` of simulation time */
+  async runArduino(id: string, seconds = 10): Promise<McuRunResult & { stdout: string; stderr: string; compile: CompileResult }> {
+    const doc = this.sim.doc;
+    const prog = doc.controllers?.[id];
+    if (!prog) throw new Error(`no program for ${id}`);
+    const compile = await compileArduino(runClang, doc.files, prog.main, id);
+    if (!compile.ok) return { status: 'error', error: compile.error, stdout: '', stderr: compile.log, compile };
+    this.limit = seconds;
+    this.t0 = this.now();
+    this.stdout = '';
+    this.stderr = '';
+    this.sim.controllerStart(id);
+    let r: McuRunResult;
+    try {
+      r = await runArduino(compile.wasm!, this.io(id));
+    } finally {
+      this.sim.controllerEnd(id);
+    }
+    return { ...r, stdout: this.stdout, stderr: this.stderr, compile };
   }
 
   /** run the MicroPython program of controller `id` for at most `seconds` of simulation time */

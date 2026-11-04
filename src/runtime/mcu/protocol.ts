@@ -14,6 +14,8 @@ export type McuWorkerIn = {
   main: string;
   /** the controller's folder in the project (its component id) */
   folder: string;
+  /** Arduino: the compiled sketch */
+  wasm?: Uint8Array;
 };
 
 export type McuWorkerOut =

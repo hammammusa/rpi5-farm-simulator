@@ -160,6 +160,15 @@ class ADC:
 ADCBlock = None
 
 
+class DAC:
+    def __init__(self, pin, bits=8):
+        self._pin = pin._id if isinstance(pin, Pin) else int(pin)
+        call('dac.write', pin=self._pin, v=0)
+
+    def write(self, value):
+        call('dac.write', pin=self._pin, v=value)
+
+
 class I2C:
     _DEFAULT = {0: (18, 19), 1: (25, 26)}
 
