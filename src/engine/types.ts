@@ -95,6 +95,17 @@ export interface ProjectDoc {
   description?: string;
   /** functional areas (large circuits) */
   zones?: Zone[];
+  /**
+   * Program of each programmable controller other than the Raspberry Pi (which keeps using
+   * `mainFile`), keyed by component id. Its files live in a folder named after the component.
+   */
+  controllers?: Record<string, ControllerProgram>;
+}
+
+export interface ControllerProgram {
+  language: import('./boards/types').LanguageId;
+  /** entry file of this controller's program (path in `files`) */
+  main: string;
 }
 
 export type PinKind = 'power' | 'ground' | 'gpio' | 'digital' | 'analog' | 'passive' | 'terminal' | 'nc' | 'hole';

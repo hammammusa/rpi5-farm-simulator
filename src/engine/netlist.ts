@@ -6,6 +6,7 @@
 
 import { pinWorld } from './geometry';
 import { PI5_HEADER } from './pi5';
+import { boardDef } from './boards';
 import { getPart, hasPart, pinsOf, withDefaults } from './parts';
 import type { ComponentInstance, PinRef, ProjectDoc } from './types';
 
@@ -34,6 +35,14 @@ export interface Netlist {
   groundNet: number;
   /** bcm -> net id (for connected header pins) */
   gpioNet: Map<number, number>;
+  /**
+   * Every ground reference: the Pi's GND, the GND terminals of every other controller
+   * (each is assumed to be powered from its own supply referenced to the same ground, e.g.
+   * USB from the same PC) and, when there is no controller, the bench supply's minus.
+   */
+  groundNets: Set<number>;
+  /** controller component id -> (pin number used by its firmware -> net id) */
+  boardNet: Map<string, Map<number, number>>;
 }
 
 const k = (comp: string, pin: string) => `${comp}:${pin}`;
@@ -129,7 +138,27 @@ export function buildNetlist(doc: ProjectDoc): Netlist {
     if (ps) groundNet = netIndex.get(k(ps.id, 'N')) ?? -1;
   }
 
-  for (const n of nets) n.name = nameNet(n, pi);
+  // other controllers: their own pin numbers and ground terminals
+  const groundNets = new Set<number>();
+  if (groundNet >= 0) groundNets.add(groundNet);
+  const boardNet = new Map<string, Map<number, number>>();
+  const labelOfNet = new Map<number, string[]>();
+  for (const c of comps) {
+    const def = c.type === 'rpi5' ? null : boardDef(c.type);
+    if (!def) continue;
+    const m = new Map<number, number>();
+    for (const bp of def.pins) {
+      const id = netIndex.get(k(c.id, bp.pin));
+      if (id === undefined) continue;
+      if (bp.kind === 'ground') groundNets.add(id);
+      if (bp.num !== undefined) m.set(bp.num, id);
+      if (nets[id].pins.length > 1 || bp.kind !== 'ground') (labelOfNet.get(id) ?? labelOfNet.set(id, []).get(id)!).push(`${c.label || c.id}.${bp.label}`);
+    }
+    boardNet.set(c.id, m);
+  }
+  if (groundNet < 0 && groundNets.size) groundNet = [...groundNets][0];
+
+  for (const n of nets) n.name = nameNet(n, pi, labelOfNet.get(n.id));
 
   return {
     key: (r) => k(r.comp, r.pin),
@@ -139,6 +168,8 @@ export function buildNetlist(doc: ProjectDoc): Netlist {
     piId: pi?.id ?? null,
     groundNet,
     gpioNet,
+    groundNets,
+    boardNet,
   };
 }
 
@@ -147,10 +178,11 @@ function splitKey(key: string): [string, string] {
   return [key.slice(0, i), key.slice(i + 1)];
 }
 
-function nameNet(n: Net, pi: ComponentInstance | null): string {
+function nameNet(n: Net, pi: ComponentInstance | null, boardLabels?: string[]): string {
   if (pi && n.piPins.length) {
     const names = new Set(n.piPins.map((p) => PI5_HEADER[p - 1].name));
     return [...names].join('/');
   }
+  if (boardLabels?.length) return [...new Set(boardLabels)].join('/');
   return `Net ${n.id}`;
 }

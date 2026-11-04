@@ -286,6 +286,55 @@ export function fill(s: string, params?: Record<string, string | number>) {
 
 // ---------------------------------------------------------------- extended component library
 Object.assign(ISSUE_TEXT, {
+  // ---- programmable controllers other than the Pi (ESP32, Wiren Board)
+  E_MCU_OVERVOLTAGE: {
+    en: { title: '{board}: {v} V on {pin} ({label})', explain: 'ESP32 GPIO pins are 3.3 V logic (absolute maximum 3.6 V) and are not 5 V tolerant. A 5 V signal (HC-SR04 echo, 5 V module output) needs a voltage divider or level shifter; never connect 5 V or an external supply to a GPIO.' },
+    ar: { title: '{board}: جهد {v} فولت على {pin} ({label})', explain: 'أطراف GPIO في ESP32 تعمل بمنطق 3.3 فولت (الحد الأقصى المطلق 3.6 فولت) ولا تتحمل 5 فولت. الإشارة ذات 5 فولت (مثل ECHO في HC-SR04 أو مخرج وحدة تعمل بـ5 فولت) تحتاج مقسم جهد أو محول مستوى، ولا تصل 5 فولت أو مصدراً خارجياً بطرف GPIO أبداً.' },
+  },
+  E_MCU_SHORT: {
+    en: { title: '{board}: {pin} output short-circuited ({ma} mA)', explain: 'The output drives a near-zero resistance. An ESP32 GPIO is designed for about 20 mA (absolute maximum 40 mA). Add a resistor or remove the short.' },
+    ar: { title: '{board}: قصر على المخرج {pin} ({ma} مللي أمبير)', explain: 'المخرج موصول بمقاومة شبه صفرية. صُمم طرف GPIO في ESP32 لنحو 20 مللي أمبير (الحد الأقصى المطلق 40 مللي أمبير). أضف مقاومة أو أزل القصر.' },
+  },
+  W_MCU_OVERCURRENT: {
+    en: { title: '{board}: {pin} drives {ma} mA', explain: 'Keep each ESP32 GPIO at or below about {limit} mA. Use a transistor, MOSFET or relay module for larger loads.' },
+    ar: { title: '{board}: الطرف {pin} يمرر {ma} مللي أمبير', explain: 'أبقِ تيار كل طرف GPIO في ESP32 عند {limit} مللي أمبير تقريباً أو أقل. استخدم ترانزستوراً أو MOSFET أو وحدة ريليه للأحمال الأكبر.' },
+  },
+  E_MCU_FLASH_PIN: {
+    en: { title: '{board}: {label} (GPIO{pin}) is a flash pin', explain: 'CLK, D0–D3 and CMD (GPIO6–11) connect the ESP32 to the SPI flash inside the WROOM-32 module. Connecting anything to them disturbs program execution — use another GPIO.' },
+    ar: { title: '{board}: الطرف {label} مخصص لذاكرة Flash', explain: 'الأطراف CLK وD0–D3 وCMD (GPIO6–11) تصل ESP32 بذاكرة SPI Flash داخل وحدة WROOM-32، وأي توصيل بها يعطل تنفيذ البرنامج. استخدم طرف GPIO آخر.' },
+  },
+  W_STRAP_BOOT: {
+    en: { title: '{board}: GPIO0 is held LOW', explain: 'GPIO0 is a strapping pin: LOW at reset puts the ESP32 into the serial bootloader instead of running your program. Do not pull it LOW at power-up (a button to GND is fine if it is released).' },
+    ar: { title: '{board}: الطرف GPIO0 مسحوب إلى LOW', explain: 'GPIO0 طرف إعداد إقلاع: إذا كان LOW عند إعادة التشغيل يدخل ESP32 وضع التحميل بدلاً من تشغيل برنامجك. لا تسحبه إلى LOW عند التشغيل (الزر الموصول بالأرضي مقبول ما دام غير مضغوط).' },
+  },
+  W_STRAP_FLASH_V: {
+    en: { title: '{board}: GPIO12 is HIGH', explain: 'GPIO12 (MTDI) selects the flash voltage at reset: HIGH selects 1.8 V and an ESP32-WROOM-32 (3.3 V flash) fails to boot. Keep it LOW or floating at power-up, or use another pin.' },
+    ar: { title: '{board}: الطرف GPIO12 في حالة HIGH', explain: 'الطرف GPIO12 (MTDI) يحدد جهد ذاكرة Flash عند الإقلاع: HIGH يختار 1.8 فولت فيفشل إقلاع ESP32-WROOM-32 (ذاكرته 3.3 فولت). أبقه LOW أو غير موصول عند التشغيل، أو استخدم طرفاً آخر.' },
+  },
+  I_STRAPPING_PIN: {
+    en: { title: 'Strapping pin used: {pin}', explain: '{note}' },
+    ar: { title: 'استخدام طرف إعداد إقلاع: {pin}', explain: 'هذا الطرف يُقرأ عند إعادة التشغيل لتحديد وضع الإقلاع. {note}' },
+  },
+  W_NO_INTERNAL_PULL: {
+    en: { title: '{pin} has no internal pull resistor', explain: 'GPIO34–39 are input-only and have no internal pull-up/pull-down: the PULL_UP/PULL_DOWN setting is ignored. Add an external resistor (10 kΩ) or the input floats.' },
+    ar: { title: 'الطرف {pin} بلا مقاومة سحب داخلية', explain: 'الأطراف GPIO34–39 للإدخال فقط وليس فيها مقاومة سحب داخلية، لذلك يُتجاهل الإعداد PULL_UP/PULL_DOWN. أضف مقاومة خارجية (10 كيلو أوم) وإلا يبقى المدخل عائماً.' },
+  },
+  W_MCU_FLOATING_INPUT: {
+    en: { title: '{pin} input is floating', explain: 'Nothing drives this input and no pull resistor is enabled, so it reads random values. Enable Pin.PULL_UP / INPUT_PULLUP or add an external resistor.' },
+    ar: { title: 'المدخل {pin} عائم', explain: 'لا شيء يقود هذا المدخل ولا توجد مقاومة سحب مفعلة، لذلك يقرأ قيماً عشوائية. فعّل Pin.PULL_UP أو INPUT_PULLUP، أو أضف مقاومة خارجية.' },
+  },
+  W_FLOATING_ADC: {
+    en: { title: '{pin} ADC input is not connected', explain: 'The analog input is open, so the conversion returns noise. Wire the sensor output (AO) to this pin and its GND to the board GND.' },
+    ar: { title: 'مدخل ADC على {pin} غير موصول', explain: 'المدخل التماثلي مفتوح، لذلك يعيد التحويل قيماً عشوائية. صل مخرج الحساس (AO) بهذا الطرف وأرضيه بأرضي اللوحة.' },
+  },
+  W_MCU_PIN_MISMATCH: {
+    en: { title: 'Code reads {pin}, but nothing matching is wired there', explain: '{hint}. Change the pin number in the code or move the wire.' },
+    ar: { title: 'الكود يقرأ {pin} ولا يوجد حساس مطابق موصول به', explain: '{hint}. غيّر رقم الطرف في الكود أو انقل السلك.' },
+  },
+  W_MCU_DHT_TYPE: {
+    en: { title: 'Code reads a {want}, but the sensor on {pin} is a {kind}', explain: 'The DHT11 and DHT22 encode their data differently, so the wrong driver returns wrong numbers without an error. Use the {kind} class.' },
+    ar: { title: 'الكود يقرأ {want} بينما الحساس على {pin} من نوع {kind}', explain: 'يرمّز DHT11 وDHT22 بياناتهما بشكل مختلف، لذلك يعيد الصنف الخاطئ أرقاماً خاطئة دون ظهور خطأ. استخدم الصنف {kind}.' },
+  },
   E_ECHO_5V: {
     en: { title: 'HC-SR04 ECHO (5 V) wired straight to GPIO{pin}', explain: 'The ECHO output swings to the module supply (5 V), which exceeds the Pi’s 3.3 V GPIO limit. Put a divider between ECHO and the GPIO (e.g. 1 kΩ from ECHO, 2 kΩ to GND) or use a level shifter.' },
     ar: { title: 'طرف ECHO (5 فولت) في HC-SR04 موصول مباشرة بـ GPIO{pin}', explain: 'يخرج طرف ECHO بجهد التغذية (5 فولت)، وهذا يتجاوز حد 3.3 فولت لأطراف GPIO. ضع مقسم جهد بين ECHO وطرف GPIO (مثلاً 1 كيلو أوم من ECHO و2 كيلو أوم إلى الأرضي) أو استخدم محول مستوى.' },

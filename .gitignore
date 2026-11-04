@@ -6,3 +6,5 @@ playwright-report
 *.log
 .DS_Store
 perf-results
+public/micropython
+public/clang

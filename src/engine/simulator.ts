@@ -15,6 +15,8 @@ import { Ssd1306 } from './devices/ssd1306';
 import { Mhz19 } from './devices/mhz19';
 import { NextionRuntime } from './devices/nextion';
 import { SerialTerminal } from './devices/serialTerm';
+import { boardDef } from './boards';
+import { ControllerIO, freshPin } from './controllers';
 
 export interface EvalResult {
   c: Circuit;
@@ -101,6 +103,8 @@ export class Simulator {
   clock: SimClock;
   farm: FarmModel;
   gpio: GpioRuntime[] = Array.from({ length: 28 }, (_, i) => freshGpio(i));
+  /** I/O state of every programmable controller other than the Pi, keyed by component id */
+  controllers = new Map<string, ControllerIO>();
   rt = new Map<string, Record<string, any>>();
   vis = new Map<string, Record<string, any>>();
   issues: Issue[] = [];
@@ -180,6 +184,12 @@ export class Simulator {
     }
     const ids = new Set(doc.components.map((c) => c.id));
     for (const id of [...this.rt.keys()]) if (!ids.has(id)) this.rt.delete(id);
+    for (const c of doc.components) {
+      if (c.type === 'rpi5' || this.controllers.get(c.id)?.def.type === c.type) continue;
+      const def = boardDef(c.type);
+      if (def) this.controllers.set(c.id, new ControllerIO(c.id, def));
+    }
+    for (const id of [...this.controllers.keys()]) if (!ids.has(id) || this.comp(id)?.type === 'rpi5') this.controllers.delete(id);
     for (const id of [...this.devices.keys()]) if (!ids.has(id)) this.devices.delete(id);
     this.farm.cfg = doc.farm;
     this.evaluate();
@@ -235,8 +245,19 @@ export class Simulator {
   }
 
   // ------------------------------------------------------------ solving
+  /** every PWM output with a duty strictly between 0 and 1 that drives a wired pin (Pi and other controllers) */
+  private pwmChannels(): { key: string; g: GpioRuntime }[] {
+    const out: { key: string; g: GpioRuntime }[] = [];
+    for (const g of this.gpio) if (g.mode === 'pwm' && g.pwmDuty > 0 && g.pwmDuty < 1 && this.net.gpioNet.has(g.bcm)) out.push({ key: `pi:${g.bcm}`, g });
+    for (const [id, io] of this.controllers) {
+      const nets = this.net.boardNet.get(id);
+      for (const g of io.pins.values()) if (g.mode === 'pwm' && g.pwmDuty > 0 && g.pwmDuty < 1 && nets?.has(g.bcm)) out.push({ key: `${id}:${g.bcm}`, g });
+    }
+    return out;
+  }
+
   private timeVarying(): boolean {
-    for (const g of this.gpio) if (g.mode === 'pwm' && g.pwmDuty > 0 && g.pwmDuty < 1 && this.net.gpioNet.has(g.bcm)) return true;
+    if (this.pwmChannels().length) return true;
     for (const c of this.doc.components) {
       const m = hasPart(c.type) ? getPart(c.type) : null;
       if (m?.pulse && m.pulse.hz((k) => this.sensorValue(c, k), this.vis.get(c.id)) > 0) return true;
@@ -255,24 +276,33 @@ export class Simulator {
     return g.value;
   }
 
-  private instantLevels(t: number): Map<number, 0 | 1> {
-    const m = new Map<number, 0 | 1>();
+  private instantLevels(t: number): Map<string, 0 | 1> {
+    const m = new Map<string, 0 | 1>();
     for (const g of this.gpio) {
-      if (g.mode === 'pwm' && g.pwmFreq > 0) m.set(g.bcm, (t * g.pwmFreq) % 1 < g.pwmDuty ? 1 : 0);
+      if (g.mode === 'pwm' && g.pwmFreq > 0) m.set(`pi:${g.bcm}`, (t * g.pwmFreq) % 1 < g.pwmDuty ? 1 : 0);
     }
+    for (const [id, io] of this.controllers)
+      for (const g of io.pins.values()) if (g.mode === 'pwm' && g.pwmFreq > 0) m.set(`${id}:${g.bcm}`, (t * g.pwmFreq) % 1 < g.pwmDuty ? 1 : 0);
     return m;
   }
 
-  solveOnce(levels: Map<number, 0 | 1>, t: number, collect = true): EvalResult {
+  /** level of a controller pin outside the PWM phase being solved */
+  private pinDefault(g: GpioRuntime): 0 | 1 {
+    if (g.mode === 'pwm') return g.pwmDuty >= 0.5 ? 1 : 0;
+    return g.value;
+  }
+
+  /** levels: PWM phase per pin, keyed "pi:<bcm>" for the Pi and "<component id>:<pin>" for other controllers */
+  solveOnce(levels: Map<string, 0 | 1>, t: number, collect = true): EvalResult {
     const c = new Circuit(0);
     const nodeOf = new Map<number, number>();
-    const groundNet = this.net.groundNet;
+    const grounds = this.net.groundNets;
     const nodeOfNet = (netId: number) => {
       if (netId < 0) {
         c.n++;
         return c.n - 1;
       }
-      if (netId === groundNet) return GND;
+      if (grounds.has(netId)) return GND;
       let n = nodeOf.get(netId);
       if (n === undefined) {
         n = c.n++;
@@ -283,7 +313,13 @@ export class Simulator {
     const view: SimView = {
       now: t,
       gpio: (b) => this.gpio[b],
-      phaseLevel: (b) => levels.get(b) ?? this.defaultLevel(b),
+      phaseLevel: (b) => levels.get(`pi:${b}`) ?? this.defaultLevel(b),
+      pin: (board, num) => this.controllers.get(board)?.pin(num) ?? null,
+      pinPhase: (board, num) => {
+        const g = this.controllers.get(board)?.pin(num);
+        return g ? levels.get(`${board}:${num}`) ?? this.pinDefault(g) : 0;
+      },
+      boardRunning: (board) => !!this.controllers.get(board)?.running,
       farm: this.farm.state,
       piPowered: this.piPowered,
     };
@@ -361,14 +397,14 @@ export class Simulator {
           let n = nodeCache.get(pin);
           if (n === undefined) {
             const netId = this.net.netOf({ comp: comp.id, pin });
-            n = netId === groundNet ? GND : nodeOf.get(netId) ?? -2;
+            n = grounds.has(netId) ? GND : nodeOf.get(netId) ?? -2;
             nodeCache.set(pin, n);
           }
           return n === -2 ? 0 : sol.volt(n);
         };
         pctx.node = (pin: string) => {
           const netId = this.net.netOf({ comp: comp.id, pin });
-          return netId === groundNet ? GND : nodeOf.get(netId) ?? -2;
+          return grounds.has(netId) ? GND : nodeOf.get(netId) ?? -2;
         };
         try {
           vis.set(comp.id, m.post(pctx));
@@ -384,15 +420,15 @@ export class Simulator {
   evaluate(t = this.clock.now()) {
     this.farm.advanceTo(t);
     this.noise.clear();
-    const pwm = this.gpio.filter((g) => g.mode === 'pwm' && g.pwmDuty > 0 && g.pwmDuty < 1 && this.net.gpioNet.has(g.bcm)).slice(0, 3);
-    const combos: { levels: Map<number, 0 | 1>; w: number }[] = [];
+    const pwm = this.pwmChannels().slice(0, 3);
+    const combos: { levels: Map<string, 0 | 1>; w: number }[] = [];
     const n = 1 << pwm.length;
     for (let mask = 0; mask < n; mask++) {
-      const levels = new Map<number, 0 | 1>();
+      const levels = new Map<string, 0 | 1>();
       let w = 1;
-      pwm.forEach((g, i) => {
+      pwm.forEach(({ key, g }, i) => {
         const hi = (mask >> i) & 1;
-        levels.set(g.bcm, hi ? 1 : 0);
+        levels.set(key, hi ? 1 : 0);
         w *= hi ? g.pwmDuty : 1 - g.pwmDuty;
       });
       combos.push({ levels, w });
@@ -427,6 +463,7 @@ export class Simulator {
     this.updateDrives();
     this.updateDevicePower(t);
     this.detectEdges(t);
+    this.detectControllerEdges(t);
     this.notify();
   }
 
@@ -437,7 +474,7 @@ export class Simulator {
   }
 
   nodeOfNet(netId: number, r = this.mainResult()) {
-    if (netId === this.net.groundNet) return GND;
+    if (this.net.groundNets.has(netId)) return GND;
     return r.nodeOf.get(netId) ?? null;
   }
 
@@ -579,7 +616,7 @@ export class Simulator {
     const gnds = pinsOf(m, this.propsOf(c)).filter((p) => p.kind === 'ground').map((p) => p.id);
     return (gnds.length ? gnds : ['GND']).some((p) => {
       const g = this.pinNet(compId, p);
-      return g >= 0 && g === this.net.groundNet;
+      return g >= 0 && this.net.groundNets.has(g);
     });
   }
 
@@ -744,7 +781,7 @@ export class Simulator {
     const n = this.net.nets[netId];
     if (![...n.comps].some((id) => id !== this.net.piId) && n.piPins.length === 1) return fromPull();
     const r = this.timeVarying() ? this.solveOnce(this.instantLevels(t), t, false) : this.mainResult();
-    const node = netId === this.net.groundNet ? GND : r.nodeOf.get(netId);
+    const node = this.net.groundNets.has(netId) ? GND : r.nodeOf.get(netId);
     if (node === undefined) return fromPull();
     if (node >= 0 && !r.sol.driven[node]) return { value: Math.random() < 0.5 ? 1 : 0, v: null, floating: true };
     const v = r.sol.volt(node);
@@ -775,7 +812,7 @@ export class Simulator {
     if (changed) this.notify();
   }
   getRuntimeIssues() {
-    return this.running ? [...this.runtimeIssues.values()] : [];
+    return this.running || [...this.controllers.values()].some((c) => c.running) ? [...this.runtimeIssues.values()] : [];
   }
 
   private detectEdges(t: number) {
@@ -1037,8 +1074,11 @@ export class Simulator {
   // ------------------------------------------------------------ I2C
   /** I2C devices reachable from the Pi's I2C1 bus, including those behind an enabled TCA9548A channel. */
   private i2cDevices() {
-    const sda = this.net.gpioNet.get(I2C1.sda);
-    const scl = this.net.gpioNet.get(I2C1.scl);
+    return this.i2cDevicesOn(this.net.gpioNet.get(I2C1.sda), this.net.gpioNet.get(I2C1.scl));
+  }
+
+  /** I2C devices on the bus formed by these SDA/SCL nets (any controller's pins) */
+  i2cDevicesOn(sda: number | undefined, scl: number | undefined) {
     const out: { c: ComponentInstance; d: DeviceModel }[] = [];
     if (sda === undefined || scl === undefined) return out;
     const buses: [number, number][] = [[sda, scl]];
@@ -1156,7 +1196,7 @@ export class Simulator {
         this.pinNet(c.id, pn.mosi) === g.get(SPI0.mosi) &&
         (!pn.miso || this.pinNet(c.id, pn.miso) === g.get(SPI0.miso)) &&
         this.pinNet(c.id, pn.cs) === g.get(SPI0.ce[dev]) &&
-        this.pinNet(c.id, pn.gnd) === this.net.groundNet;
+        this.net.groundNets.has(this.pinNet(c.id, pn.gnd));
       if (!ok || !this.vis.get(c.id)?.powered) continue;
       const out = this.device(c.id)!.spiXfer!(bytes);
       this.resolveIssue('W_SPI_NO_DEVICE', (p) => p.dev === dev);
@@ -1176,14 +1216,19 @@ export class Simulator {
 
   dhtRead(b: number, want?: 'DHT11' | 'DHT22'): { temperature: number; humidity: number } | { error: 'not_found' | 'timeout'; hint?: string } {
     this.requirePi();
-    const netId = this.net.gpioNet.get(b);
+    return this.dhtReadNet(this.net.gpioNet.get(b), `GPIO${b}`, want, b);
+  }
+
+  /** DHT-family sensor whose DATA line is on this net; `where` names the pin in messages */
+  dhtReadNet(netId: number | undefined, where: string, want?: 'DHT11' | 'DHT22', piBcm?: number): { temperature: number; humidity: number } | { error: 'not_found' | 'timeout'; hint?: string } {
+    const b = piBcm ?? where;
     for (const c of this.doc.components) {
       if (!DHT_TYPES[c.type] || netId === undefined || this.pinNet(c.id, 'DATA') !== netId) continue;
       const fault = this.propsOf(c).fault ?? 'none';
       const name = c.label || getPart(c.type).name;
-      if (!this.vis.get(c.id)?.powered) return { error: 'not_found', hint: `${name} on GPIO${b} has no power (check VCC/GND)` };
+      if (!this.vis.get(c.id)?.powered) return { error: 'not_found', hint: `${name} on ${where} has no power (check VCC/GND)` };
       if (fault === 'disconnected') return { error: 'not_found' };
-      if (!this.sharesGround(c.id)) return { error: 'not_found', hint: `${name} has no common GND with the Pi` };
+      if (!this.sharesGround(c.id)) return { error: 'not_found', hint: `${name} has no common GND with the ${piBcm !== undefined ? 'Pi' : 'controller'}` };
       if (!this.pulledUp(netId, 20000)) return { error: 'not_found', hint: `no pull-up resistor on the DATA line of ${name}` };
       if (fault === 'timeout' && Math.random() < 0.6) return { error: 'timeout' };
       if (fault === 'invalid') return { temperature: -40, humidity: 0, kind: DHT_TYPES[c.type], comp: c.id } as any;
@@ -1202,7 +1247,7 @@ export class Simulator {
       }
       // wrong driver class: the 40 data bits are decoded with the other sensor's format
       if (want && want !== kind) {
-        this.issueOnce('W_DHT_TYPE_MISMATCH', { want, kind, pin: b }, 'warning', [c.id]);
+        this.issueOnce(piBcm !== undefined ? 'W_DHT_TYPE_MISMATCH' : 'W_MCU_DHT_TYPE', { want, kind, pin: b }, 'warning', [c.id]);
         if (want === 'DHT11') {
           const h10 = Math.round(H * 10);
           const t10 = Math.round(T * 10);
@@ -1214,7 +1259,7 @@ export class Simulator {
         }
       }
       this.noteRead(c.id, kind, `${T} °C, ${H} %RH`);
-      this.resolveIssue('W_CODE_PIN_MISMATCH', (p) => p.pin === b);
+      this.resolveIssue(piBcm !== undefined ? 'W_CODE_PIN_MISMATCH' : 'W_MCU_PIN_MISMATCH', (p) => p.pin === b);
       return { temperature: T, humidity: H, kind, comp: c.id } as any;
     }
     // nothing on this pin: tell the user where the DHT sensor really is
@@ -1222,12 +1267,28 @@ export class Simulator {
     const hints = others
       .map((c) => {
         const n = this.pinNet(c.id, 'DATA');
+        const name = c.label || getPart(c.type).name;
+        if (piBcm === undefined) {
+          const at = this.pinNameOfNet(n);
+          return at ? `${name} DATA is wired to ${at}, but the code reads ${where}` : `${name} DATA is not wired to any controller pin`;
+        }
         const g = [...this.net.gpioNet].find(([, nn]) => nn === n)?.[0];
-        return g !== undefined ? `${c.label || getPart(c.type).name} DATA is wired to GPIO${g} (pin ${BCM_TO_PHYS[g]}), but the code reads GPIO${b}` : `${c.label || getPart(c.type).name} DATA is not wired to any GPIO`;
+        return g !== undefined ? `${name} DATA is wired to GPIO${g} (pin ${BCM_TO_PHYS[g]}), but the code reads GPIO${b}` : `${name} DATA is not wired to any GPIO`;
       })
       .slice(0, 2);
-    if (others.length) this.issueOnce('W_CODE_PIN_MISMATCH', { pin: b, hint: hints.join('; ') }, 'warning', others.map((c) => c.id));
+    if (others.length) this.issueOnce(piBcm !== undefined ? 'W_CODE_PIN_MISMATCH' : 'W_MCU_PIN_MISMATCH', { pin: b, hint: hints.join('; ') }, 'warning', others.map((c) => c.id));
     return { error: 'not_found', hint: hints.join('; ') || 'no DHT sensor in the circuit' };
+  }
+
+  /** "esp1 GPIO4"-style name of the first controller pin on this net, or null */
+  pinNameOfNet(netId: number): string | null {
+    if (netId < 0) return null;
+    for (const [id, m] of this.net.boardNet) {
+      const io = this.controllers.get(id);
+      for (const [num, n] of m) if (n === netId) return `${this.comp(id)?.label || id} ${io?.def.family === 'mcu' ? `GPIO${num}` : io?.byNum.get(num)?.label ?? num}`;
+    }
+    const g = [...this.net.gpioNet].find(([, nn]) => nn === netId)?.[0];
+    return g !== undefined ? `Pi GPIO${g}` : null;
   }
 
   w1Id(compId: string) {
@@ -1237,20 +1298,24 @@ export class Simulator {
   w1List(): string[] {
     this.requirePi();
     if (!this.piProps()?.onewire) return [];
-    const netId = this.net.gpioNet.get(ONEWIRE_DEFAULT_PIN);
+    return this.w1ListNet(this.net.gpioNet.get(ONEWIRE_DEFAULT_PIN));
+  }
+
+  /** ROM ids of the powered, pulled-up DS18B20 sensors on this 1-Wire net */
+  w1ListNet(netId: number | undefined, pullupOhms = 10000): string[] {
     if (netId === undefined) return [];
     const out: string[] = [];
     for (const c of this.doc.components) {
       if (c.type !== 'ds18b20' || this.pinNet(c.id, 'DQ') !== netId) continue;
       if (!this.vis.get(c.id)?.powered || (this.propsOf(c).fault ?? 'none') === 'disconnected' || !this.sharesGround(c.id)) continue;
-      if (!this.pulledUp(netId, 10000)) continue;
+      if (!this.pulledUp(netId, pullupOhms)) continue;
       out.push(this.w1Id(c.id));
     }
     return out;
   }
 
-  w1Read(id: string): string | null {
-    if (!this.w1List().includes(id)) return null;
+  w1Read(id: string, netId?: number): string | null {
+    if (!(netId === undefined ? this.w1List() : this.w1ListNet(netId)).includes(id)) return null;
     const c = this.doc.components.find((x) => x.type === 'ds18b20' && this.w1Id(x.id) === id)!;
     const fault = this.propsOf(c).fault ?? 'none';
     let milli = Math.round(this.sensorValue(c, 'temperature') * 16) * 62.5;
@@ -1294,7 +1359,11 @@ export class Simulator {
   /** Deliver one frame of [r, g, b] pixels from GPIO `bcm` along the DIN → DOUT chain of strips. */
   ws2812Show(bcm: number, pixels: number[][]): number {
     this.requirePi();
-    let din = this.net.gpioNet.get(bcm);
+    return this.ws2812ShowNet(this.net.gpioNet.get(bcm), pixels);
+  }
+
+  /** deliver a frame to the WS2812 chain whose first DIN is on this net */
+  ws2812ShowNet(din: number | undefined, pixels: number[][]): number {
     if (din === undefined) return 0;
     let rest = pixels.slice();
     let delivered = 0;
@@ -1314,6 +1383,251 @@ export class Simulator {
     }
     this.evaluate();
     return delivered;
+  }
+
+  // ------------------------------------------------------------ other controllers (ESP32, Wiren Board …)
+  controller(id: string): ControllerIO {
+    const io = this.controllers.get(id);
+    if (!io) throw new SimError('RuntimeError', `Controller "${id}" is not in the workspace.`);
+    return io;
+  }
+
+  /** the board has power: ESP32 from USB (or its 5V/3V3 pins), Wiren Board from V+ (9…48 V) */
+  boardPowered(id: string): boolean {
+    const c = this.comp(id);
+    if (!c) return false;
+    const v = this.vis.get(id);
+    return !!v && v.powered !== false && (this.propsOf(c).fault ?? 'none') !== 'power_fail';
+  }
+
+  private requireBoard(id: string): ControllerIO {
+    const io = this.controller(id);
+    if (!this.boardPowered(id)) throw new SimError('OSError', `${this.comp(id)?.label || id} has no power${io.def.type === 'wb74' ? ' (connect a 9…48 V DC supply to V+ and GND)' : ''}.`);
+    return io;
+  }
+
+  controllerStart(id: string) {
+    const io = this.controller(id);
+    io.reset();
+    io.running = true;
+    this.evaluate();
+  }
+
+  controllerEnd(id: string) {
+    const io = this.controllers.get(id);
+    if (!io) return;
+    io.running = false;
+    io.reset();
+    this.evaluate();
+  }
+
+  /** the board pin a firmware number refers to, checked for the requested use */
+  boardPin(io: ControllerIO, num: number, use: 'in' | 'out' | 'pwm' | 'adc' | 'any' = 'any') {
+    const p = io.byNum.get(num);
+    const fam = io.def.family;
+    const name = fam === 'mcu' ? `GPIO${num}` : String(num);
+    if (!p) throw new SimError('ValueError', `invalid pin: ${name} is not available on the ${io.def.model}`);
+    if (p.caps.flash) throw new SimError('ValueError', `${name} (${p.label}) is connected to the module's SPI flash and cannot be used as a GPIO`);
+    if ((use === 'out' || use === 'pwm') && !p.caps.output) throw new SimError('ValueError', `${name} is input-only (GPIO34–39 have no output driver)`);
+    if (use === 'adc' && !p.caps.adc) throw new SimError('ValueError', `${name} has no ADC channel (ADC pins: GPIO32–39 on ADC1, 0/2/4/12–15/25–27 on ADC2)`);
+    return p;
+  }
+
+  private mcuPinName(io: ControllerIO, num: number) {
+    return `${this.comp(io.id)?.label || io.id} ${io.def.family === 'mcu' ? `GPIO${num}` : io.byNum.get(num)?.label ?? num}`;
+  }
+
+  mcuSetup(id: string, num: number, mode: 'input' | 'output', pull: 'up' | 'down' | 'none', owner: string, initial = 0, t?: number) {
+    const io = this.requireBoard(id);
+    const p = this.boardPin(io, num, mode === 'output' ? 'out' : 'in');
+    const cur = io.claims.get(num);
+    if (cur && cur !== owner) throw new SimError('OSError', `GPIO${num} is already in use by ${cur}`);
+    io.claims.set(num, owner);
+    const g = io.pins.get(num)!;
+    if (mode === 'input' && pull !== 'none' && !(pull === 'up' ? p.caps.pullUp : p.caps.pullDown)) {
+      this.issueOnce('W_NO_INTERNAL_PULL', { pin: this.mcuPinName(io, num) }, 'warning', [id]);
+      pull = 'none';
+    }
+    g.mode = mode;
+    g.pull = mode === 'input' ? pull : 'none';
+    g.value = initial ? 1 : 0;
+    g.pwmDuty = 0;
+    g.pattern = null;
+    g.owner = owner;
+    if (p.caps.strapping) this.issueOnce('I_STRAPPING_PIN', { pin: this.mcuPinName(io, num), note: p.caps.strapping }, 'info', [id]);
+    this.pyEvent('gpio', `${this.mcuPinName(io, num)} → ${mode.toUpperCase()}${mode === 'input' ? `, pull ${pull}` : ''} · ${owner}`);
+    this.evaluate(t);
+  }
+
+  mcuRelease(id: string, num: number, t?: number) {
+    const io = this.controllers.get(id);
+    if (!io) return;
+    if (io.claims.delete(num)) this.releases++;
+    io.watchers.delete(num);
+    if (io.pins.has(num)) io.pins.set(num, freshPin(num));
+    this.evaluate(t);
+  }
+
+  mcuWrite(id: string, num: number, v: number, t?: number) {
+    const io = this.requireBoard(id);
+    this.boardPin(io, num, 'out');
+    const g = io.pins.get(num)!;
+    if (g.mode !== 'output' && g.mode !== 'pwm') throw new SimError('OSError', `GPIO${num} is not configured as an output`);
+    const nv: 0 | 1 = v ? 1 : 0;
+    const changed = g.mode !== 'output' || g.value !== nv;
+    g.mode = 'output';
+    g.value = nv;
+    if (changed) {
+      this.log(`${this.mcuPinName(io, num)} → ${nv ? 'HIGH' : 'LOW'}`);
+      this.evaluate(t);
+    }
+  }
+
+  mcuPwm(id: string, num: number, freq: number, duty: number, t?: number) {
+    const io = this.requireBoard(id);
+    this.boardPin(io, num, 'pwm');
+    const g = io.pins.get(num)!;
+    if (g.mode === 'input' && io.claims.has(num) && !io.claims.get(num)!.startsWith('pwm')) throw new SimError('OSError', `GPIO${num} is configured as an input`);
+    io.claims.set(num, io.claims.get(num) ?? 'pwm');
+    g.mode = 'pwm';
+    g.pwmFreq = Math.max(0, freq);
+    g.pwmDuty = Math.max(0, Math.min(1, duty));
+    this.evaluate(t);
+  }
+
+  /** digital level seen by a controller pin at time t (through the real circuit) */
+  mcuReadLevel(id: string, num: number, t = this.clock.now()): { value: 0 | 1; v: number | null; floating: boolean } {
+    const io = this.controller(id);
+    const g = io.pins.get(num) ?? freshPin(num);
+    if (g.mode === 'output') return { value: g.value, v: g.value ? io.def.logicV : 0, floating: false };
+    const fromPull = (): { value: 0 | 1; v: number | null; floating: boolean } =>
+      g.pull === 'up' ? { value: 1, v: io.def.logicV, floating: false } : g.pull === 'down' ? { value: 0, v: 0, floating: false } : { value: Math.random() < 0.5 ? 1 : 0, v: null, floating: true };
+    const netId = this.net.boardNet.get(id)?.get(num);
+    if (netId === undefined) return fromPull();
+    if (![...this.net.nets[netId].comps].some((c) => c !== id)) return fromPull();
+    const r = this.timeVarying() ? this.solveOnce(this.instantLevels(t), t, false) : this.mainResult();
+    const node = this.net.groundNets.has(netId) ? GND : r.nodeOf.get(netId);
+    if (node === undefined) return fromPull();
+    if (node >= 0 && !r.sol.driven[node]) return { value: Math.random() < 0.5 ? 1 : 0, v: null, floating: true };
+    const v = r.sol.volt(node);
+    return { value: v >= io.def.logicV / 2 ? 1 : 0, v, floating: false };
+  }
+
+  mcuRead(id: string, num: number, t?: number) {
+    const io = this.requireBoard(id);
+    this.boardPin(io, num, 'in');
+    const r = this.mcuReadLevel(id, num, t);
+    const g = io.pins.get(num)!;
+    if (r.floating && g.mode === 'input') this.issueOnce('W_MCU_FLOATING_INPUT', { pin: this.mcuPinName(io, num) }, 'warning', [id]);
+    else if (!r.floating) this.resolveIssue('W_MCU_FLOATING_INPUT', (p) => p.pin === this.mcuPinName(io, num));
+    return r;
+  }
+
+  /**
+   * ESP32 SAR ADC: 12-bit reading of the voltage on the pin. Linear model over the attenuation's
+   * full scale (11 dB ≈ 0…3.3 V, the Arduino and MicroPython default); the real converter is
+   * non-linear near both ends. ADC2 is unavailable while Wi-Fi is active, as on the chip.
+   */
+  mcuAdc(id: string, num: number, attenDb = 11, t = this.clock.now()): { raw: number; volts: number } {
+    const io = this.requireBoard(id);
+    const p = this.boardPin(io, num, 'adc');
+    if (p.caps.adc!.unit === 2 && this.rtOf(id).wifi) throw new SimError('OSError', `GPIO${num} is on ADC2, which cannot be used while Wi-Fi is active — use an ADC1 pin (GPIO32–39)`);
+    const full = attenDb >= 11 ? 3.3 : attenDb >= 6 ? 2.2 : attenDb >= 2.5 ? 1.5 : 1.1;
+    const netId = this.net.boardNet.get(id)?.get(num);
+    let v: number | null = null;
+    if (netId !== undefined && [...this.net.nets[netId].comps].some((c) => c !== id)) {
+      const r = this.mainResult();
+      const node = this.net.groundNets.has(netId) ? GND : r.nodeOf.get(netId);
+      if (node !== undefined && (node < 0 || r.sol.driven[node])) v = r.sol.volt(node);
+    }
+    if (v === null) {
+      this.issueOnce('W_FLOATING_ADC', { pin: this.mcuPinName(io, num) }, 'warning', [id]);
+      v = Math.random() * full;
+    }
+    const raw = Math.round(Math.max(0, Math.min(1, v / full)) * 4095);
+    return { raw, volts: Math.max(0, Math.min(full, v)) };
+  }
+
+  mcuWatch(id: string, num: number, on: boolean, bounceMs = 0) {
+    const io = this.controller(id);
+    if (!on) {
+      io.watchers.delete(num);
+      return;
+    }
+    io.watchers.set(num, { last: this.mcuReadLevel(id, num).value, bounceMs, lastEdgeT: -1e9, pulse: false });
+  }
+
+  private detectControllerEdges(t: number) {
+    for (const [id, io] of this.controllers) {
+      if (!io.running) continue;
+      for (const [num, w] of io.watchers) {
+        const lv = this.mcuReadLevel(id, num, t).value;
+        if (w.last !== null && lv !== w.last && (t - w.lastEdgeT) * 1000 >= w.bounceMs) {
+          w.lastEdgeT = t;
+          io.pushEvent({ k: 'edge', pin: num, v: lv, t });
+        }
+        w.last = lv;
+      }
+    }
+  }
+
+  private mcuBusNets(id: string, nums: number[]) {
+    return nums.map((n) => this.net.boardNet.get(id)?.get(n));
+  }
+
+  mcuI2cScan(id: string, sda: number, scl: number): number[] {
+    const io = this.requireBoard(id);
+    this.boardPin(io, sda, 'out');
+    this.boardPin(io, scl, 'out');
+    const [a, b] = this.mcuBusNets(id, [sda, scl]);
+    return [...new Set(this.i2cDevicesOn(a, b).map((x) => x.d.i2cAddress!()))].sort((x, y) => x - y);
+  }
+
+  mcuI2c(id: string, sda: number, scl: number, addr: number, write: number[] | null, readN: number): number[] {
+    this.requireBoard(id);
+    const [a, b] = this.mcuBusNets(id, [sda, scl]);
+    const devs = this.i2cDevicesOn(a, b).filter((x) => x.d.i2cAddress!() === addr);
+    const hex = `0x${addr.toString(16).padStart(2, '0')}`;
+    const bus = 'I2C1' as const;
+    if (devs.length === 0) {
+      this.pushBusLog({ t: this.clock.now(), bus, addr: hex, dir: write && write.length ? 'w' : 'r', bytes: write ?? [], peer: '—', note: `${this.comp(id)?.label || id} (SDA GPIO${sda}, SCL GPIO${scl}): NACK, no device at this address` });
+      this.notify();
+      throw new SimError('OSError', '[Errno 19] ENODEV (no I2C device answers at this address)');
+    }
+    if (devs.length > 1) throw new SimError('OSError', '[Errno 5] EIO (two devices answer at the same address)');
+    const d = devs[0].d;
+    const peer = devs[0].c.label || getPart(devs[0].c.type).name;
+    if (write && write.length) {
+      d.i2cWrite?.(write);
+      this.pushBusLog({ t: this.clock.now(), bus, addr: hex, dir: 'w', bytes: [...write], peer });
+    }
+    const out = readN > 0 ? d.i2cRead?.(readN) ?? new Array(readN).fill(0xff) : [];
+    if (readN > 0) this.pushBusLog({ t: this.clock.now(), bus, addr: hex, dir: 'r', bytes: [...out], peer });
+    this.notify();
+    return out;
+  }
+
+  mcuDht(id: string, num: number, kind?: 'DHT11' | 'DHT22') {
+    const io = this.requireBoard(id);
+    this.boardPin(io, num, 'in');
+    return this.dhtReadNet(this.net.boardNet.get(id)?.get(num), this.mcuPinName(io, num), kind);
+  }
+
+  mcuW1Scan(id: string, num: number): string[] {
+    const io = this.requireBoard(id);
+    this.boardPin(io, num, 'out');
+    return this.w1ListNet(this.net.boardNet.get(id)?.get(num));
+  }
+
+  mcuW1Read(id: string, num: number, rom: string): string | null {
+    this.requireBoard(id);
+    return this.w1Read(rom, this.net.boardNet.get(id)?.get(num));
+  }
+
+  mcuNeopixel(id: string, num: number, pixels: number[][]): number {
+    const io = this.requireBoard(id);
+    this.boardPin(io, num, 'out');
+    return this.ws2812ShowNet(this.net.boardNet.get(id)?.get(num), pixels);
   }
 
   cpuTemp() {

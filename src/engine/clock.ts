@@ -9,8 +9,8 @@ export class SimClock {
   anchor: number;
   speed = 1;
   paused = false;
-  private shared: Float64Array | null = null;
-  private seq: Int32Array | null = null;
+  /** shared copies read by workers (the Pi's Python worker and every controller's worker) */
+  private shared: { f64: Float64Array; seq: Int32Array }[] = [];
   private listeners = new Set<() => void>();
 
   constructor(startMs = Date.now(), private wall: () => number = () => Date.now()) {
@@ -19,9 +19,11 @@ export class SimClock {
   }
 
   attachShared(f64: Float64Array, seq: Int32Array) {
-    this.shared = f64;
-    this.seq = seq;
+    this.shared.push({ f64, seq });
     this.publish();
+    return () => {
+      this.shared = this.shared.filter((x) => x.f64 !== f64);
+    };
   }
 
   onChange(fn: () => void) {
@@ -63,12 +65,12 @@ export class SimClock {
   }
 
   private publish() {
-    if (this.shared && this.seq) {
-      Atomics.add(this.seq, 0, 1);
-      this.shared[0] = this.epoch;
-      this.shared[1] = this.anchor;
-      this.shared[2] = this.paused ? 0 : this.speed;
-      Atomics.add(this.seq, 0, 1);
+    for (const { f64, seq } of this.shared) {
+      Atomics.add(seq, 0, 1);
+      f64[0] = this.epoch;
+      f64[1] = this.anchor;
+      f64[2] = this.paused ? 0 : this.speed;
+      Atomics.add(seq, 0, 1);
     }
     for (const l of this.listeners) l();
   }

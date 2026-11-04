@@ -1,16 +1,21 @@
-// Copies the Pyodide runtime from node_modules into public/pyodide so the app
-// is fully self-hosted (no CDN dependency at runtime).
-import { cpSync, existsSync, mkdirSync } from 'node:fs';
+// Copies the WebAssembly runtimes from node_modules into public/ so the app is fully
+// self-hosted (no CDN dependency at runtime): Pyodide (Raspberry Pi Python), MicroPython
+// (ESP32) and the YoWASP Clang/LLD toolchain (Arduino C++ for ESP32, loaded only when an
+// Arduino sketch is compiled).
+import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const src = join('node_modules', 'pyodide');
-const dest = join('public', 'pyodide');
-if (!existsSync(src)) {
-  console.warn('[copy-pyodide] node_modules/pyodide not found, skipping');
-  process.exit(0);
+function copy(pkg, dest, files) {
+  const src = join('node_modules', ...pkg.split('/'));
+  if (!existsSync(src)) {
+    console.warn(`[copy-runtimes] node_modules/${pkg} not found, skipping`);
+    return;
+  }
+  mkdirSync(dest, { recursive: true });
+  for (const f of files(src)) if (existsSync(join(src, f))) cpSync(join(src, f), join(dest, f.split('/').pop()));
+  console.log('[copy-runtimes] copied', pkg, 'to', dest);
 }
-mkdirSync(dest, { recursive: true });
-for (const f of ['pyodide.asm.js', 'pyodide.asm.wasm', 'pyodide.mjs', 'pyodide.js', 'python_stdlib.zip', 'pyodide-lock.json']) {
-  if (existsSync(join(src, f))) cpSync(join(src, f), join(dest, f));
-}
-console.log('[copy-pyodide] copied runtime to', dest);
+
+copy('pyodide', join('public', 'pyodide'), () => ['pyodide.asm.js', 'pyodide.asm.wasm', 'pyodide.mjs', 'pyodide.js', 'python_stdlib.zip', 'pyodide-lock.json']);
+copy('@micropython/micropython-webassembly-pyscript', join('public', 'micropython'), () => ['micropython.mjs', 'micropython.wasm']);
+copy('@yowasp/clang', join('public', 'clang'), (src) => readdirSync(join(src, 'gen')).map((f) => `gen/${f}`));

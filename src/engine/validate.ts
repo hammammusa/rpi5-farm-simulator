@@ -107,7 +107,7 @@ export function validateStatic(sim: Simulator): Issue[] {
       const sig = pinIds.filter((p) => !['GND', 'VCC', 'AGND', 'DGND', 'VDD', 'VREF'].includes(p));
       const talksToPi = sig.some((p) => [...net.gpioNet.values()].includes(netOf(c.id, p)));
       const g = netOf(c.id, c.type === 'mcp3008' ? 'DGND' : 'GND');
-      if (talksToPi && g !== net.groundNet) add('W_NO_COMMON_GROUND', 'warning', [c.id], {}, [{ comp: c.id, pin: c.type === 'mcp3008' ? 'DGND' : 'GND' }]);
+      if (talksToPi && !net.groundNets.has(g)) add('W_NO_COMMON_GROUND', 'warning', [c.id], {}, [{ comp: c.id, pin: c.type === 'mcp3008' ? 'DGND' : 'GND' }]);
     }
     // low-side switch must share ground with the Pi
     if (pi && (c.type === 'mosfet' || c.type === 'npn')) {
@@ -115,7 +115,7 @@ export function validateStatic(sim: Simulator): Issue[] {
       const ret = c.type === 'mosfet' ? 'S' : 'E';
       const ctlNets = reachViaResistor(sim, netOf(c.id, ctl));
       const driven = [...net.gpioNet.values()].some((n) => ctlNets.has(n));
-      if (driven && netOf(c.id, ret) !== net.groundNet) add('W_NO_COMMON_GROUND', 'warning', [c.id], {}, [{ comp: c.id, pin: ret }]);
+      if (driven && !net.groundNets.has(netOf(c.id, ret))) add('W_NO_COMMON_GROUND', 'warning', [c.id], {}, [{ comp: c.id, pin: ret }]);
     }
     // flyback diode for inductive loads switched by a transistor
     if (m.inductive && m.loadPins) {
@@ -171,7 +171,7 @@ export function hasPullupResistor(sim: Simulator, netId: number, maxOhms: number
   const node = sim.nodeOfNet(netId, r);
   if (node === null || node < 0) return false;
   for (const e of r.c.elems) {
-    if (e.owner === sim.net.piId) continue;
+    if (e.owner === sim.net.piId || sim.controllers.has(e.owner)) continue;
     if (e.k === 'R' && e.r <= maxOhms) {
       const other = e.a === node ? e.b : e.b === node ? e.a : null;
       if (other !== null && r.sol.volt(other) >= 2.8) return true;

@@ -315,7 +315,7 @@ export function buildReport(doc: ProjectDoc, opts: { lang?: Lang; sim?: Simulato
   const netName = (id: number) => {
     if (id < 0) return '—';
     const n = net.nets[id];
-    if (id === net.groundNet) return 'GND';
+    if (net.groundNets.has(id)) return 'GND';
     if (!/^Net \d+$/.test(n.name)) return n.name;
     return `N${id}`;
   };
@@ -370,7 +370,7 @@ export function buildReport(doc: ProjectDoc, opts: { lang?: Lang; sim?: Simulato
   };
   const classify = (id: number): { signal: string; supply: string } => {
     if (id < 0) return { signal: t('Not connected'), supply: '—' };
-    if (id === net.groundNet) return { signal: t('Ground'), supply: '0 V' };
+    if (net.groundNets.has(id)) return { signal: t('Ground'), supply: '0 V' };
     const n = net.nets[id];
     const piNames = new Set(n.piPins.map((p) => PI5_HEADER[p - 1].name));
     if (piNames.has('3V3')) return { signal: t('Power'), supply: '3.3 V' };

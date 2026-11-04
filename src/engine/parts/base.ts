@@ -37,6 +37,12 @@ export interface SimView {
   gpio(bcm: number): GpioRuntime;
   /** instantaneous logical level of a PWM/pattern pin for the phase being solved */
   phaseLevel(bcm: number): 0 | 1;
+  /** pin state of another programmable controller (ESP32, Wiren Board …), by its component id */
+  pin(board: string, num: number): GpioRuntime | null;
+  /** instantaneous level of that controller's pin for the phase being solved (PWM-aware) */
+  pinPhase(board: string, num: number): 0 | 1;
+  /** a program is running on that controller */
+  boardRunning(board: string): boolean;
   farm: FarmState;
   piPowered: boolean;
 }

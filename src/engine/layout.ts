@@ -376,7 +376,7 @@ export function recolorWires(doc: ProjectDoc): ProjectDoc {
     return (pinsOf(m, withDefaults(m, c.props)).find((p) => p.id === pin)?.label ?? pin).toUpperCase();
   };
   const isGround = (n: number) =>
-    n === net.groundNet ||
+    net.groundNets.has(n) ||
     net.nets[n]?.pins.some((p) => {
       const c = byId.get(p.comp);
       if (!c || !hasPart(c.type) || c.type === 'breadboard') return false;
