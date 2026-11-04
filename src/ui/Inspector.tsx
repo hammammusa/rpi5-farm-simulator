@@ -204,6 +204,16 @@ export function Inspector() {
         <p className="muted small">
           {t('Functional/behavioural simulation: a DC nodal solver for voltages and currents plus protocol models for GPIO, PWM, I2C, SPI, UART and 1-Wire. It is not a full SPICE or BCM2712 CPU emulation; your code runs in real CPython (Pyodide).')}
         </p>
+        {useApp.getState().doc.components.some((c) => c.type === 'esp32_devkitc') && (
+          <p className="muted small">
+            {t('ESP32: MicroPython programs run in the official MicroPython 1.29 WebAssembly port; Arduino sketches are compiled by Clang/LLVM 22 to WebAssembly with the simulator’s Arduino-ESP32 core subset. The Xtensa CPU, ESP-IDF, FreeRTOS and the radio are not emulated; Wi-Fi is a virtual LAN.')}
+          </p>
+        )}
+        {useApp.getState().doc.components.some((c) => c.type === 'wb74') && (
+          <p className="muted small">
+            {t('Wiren Board 7.4: wb-rules scripts run in a QuickJS sandbox against simulated wb-mqtt-gpio/adc/w1/serial drivers and an MQTT broker. Debian/Linux, the web interface and CAN are not emulated.')}
+          </p>
+        )}
       </aside>
     );
   }

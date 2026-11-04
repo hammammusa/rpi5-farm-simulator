@@ -2143,3 +2143,38 @@ p.err {
   font-size: 0.85em;
   opacity: 0.85;
 }
+
+/* ------------------------------------------------ MQTT monitor (Wiren Board broker) */
+.mqtt-cols {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+.mqtt-devices {
+  flex: 1;
+  overflow: auto;
+  font-size: 12px;
+}
+.mqtt-cols .mon-log {
+  flex: 1.4;
+}
+.mqtt-dev {
+  margin-bottom: 6px;
+}
+.mqtt-dev-name {
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.mqtt-ctl {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 1px 4px;
+}
+.mqtt-ctl > span:first-child {
+  min-width: 110px;
+}
+.mqtt-ctl.err {
+  color: var(--danger);
+}

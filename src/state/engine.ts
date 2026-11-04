@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react';
 import { Simulator } from '../engine/simulator';
 import { PythonRuntime, type RunResult } from '../runtime/bridge';
 import { McuRuntime, type McuRunResult } from '../runtime/mcu/mcuRuntime';
+import { WbRulesEngine } from '../runtime/wb/wbRules';
 import { boardDef, controllersIn, LANGUAGES, RUNNABLE_LANGUAGES } from '../engine/boards';
 import { useApp } from './store';
 import { lastProjectId, loadProject as idbLoad, migrate, saveProject } from './persist';
@@ -147,9 +148,66 @@ function onMcuDone(id: string, r: McuRunResult) {
   }
 }
 
-/** Run the program of one microcontroller (ESP32 …). */
+// ------------------------------------------------------------ Wiren Board (wb-rules)
+const wbEngines = new Map<string, WbRulesEngine>();
+
+export function getWbEngine(id: string) {
+  return wbEngines.get(id) ?? null;
+}
+
+function wbEngine(id: string) {
+  let e = wbEngines.get(id);
+  if (!e) {
+    e = new WbRulesEngine(sim, id, {
+      log: (level, text) => useApp.getState().termWrite(level === 'error' ? 'err' : 'out', text + '\n', id),
+    });
+    wbEngines.set(id, e);
+  }
+  return e;
+}
+
+/** driver messages of every Wiren Board go to the terminal, tagged with the controller */
+function attachWbLogs() {
+  for (const w of sim.wb.values()) {
+    if (w.onLog) continue;
+    w.onLog = (l) => useApp.getState().termWrite(l.level === 'error' ? 'err' : 'sys', `[${l.src}] ${l.msg}\n`, w.id);
+  }
+}
+
+async function runRules(id: string, clearError: boolean) {
+  const st = useApp.getState();
+  const prog = st.doc.controllers?.[id];
+  if (!prog) return;
+  if (clearError) st.setPyError(null);
+  const e = wbEngine(id);
+  e.stop();
+  st.setMcu(id, { state: 'loading', detail: 'Starting wb-rules…' });
+  st.termWrite('sys', `--- Wiren Board 7.4 · wb-rules (QuickJS) · ${prog.main} ---\n`, id);
+  sim.controllerStart(id);
+  sim.pyEvent('run', `${id}: wb-rules ${prog.main}`);
+  const r = await e.start(useApp.getState().doc.files, prog.main);
+  if (!r.ok) {
+    sim.controllerEnd(id);
+    st.setMcu(id, { state: 'idle', detail: '' });
+    onMcuDone(id, { status: 'error', error: r.error });
+    return;
+  }
+  st.setMcu(id, { state: 'running', detail: 'wb-rules (QuickJS)' });
+}
+
+function stopRules(id: string) {
+  const e = wbEngines.get(id);
+  if (!e?.running && useApp.getState().mcu[id]?.state !== 'running') return;
+  e?.stop();
+  sim.controllerEnd(id);
+  useApp.getState().setMcu(id, { state: 'idle', detail: '' });
+  onMcuDone(id, { status: 'stopped' });
+}
+
+/** Run the program of one microcontroller (ESP32 …) or controller (Wiren Board). */
 export async function runController(id: string, clearError = true) {
   const st = useApp.getState();
+  if (st.doc.controllers?.[id]?.language === 'wbrules') return runRules(id, clearError);
   if (typeof SharedArrayBuffer === 'undefined' || !(globalThis as any).crossOriginIsolated) {
     st.termWrite('err', translate(st.lang, 'This page is not cross-origin isolated, so SharedArrayBuffer is unavailable. Reload the page (the service worker enables isolation on the first load).') + '\n', id);
     return;
@@ -173,6 +231,7 @@ export async function runController(id: string, clearError = true) {
 }
 
 export async function stopController(id: string) {
+  if (wbEngines.has(id)) stopRules(id);
   await mcuRuntimes.get(id)?.stop();
 }
 
@@ -208,6 +267,7 @@ export async function runProgram() {
 }
 
 export async function stopProgram() {
+  for (const id of wbEngines.keys()) stopRules(id);
   await Promise.all([runtime?.stop(), ...[...mcuRuntimes.values()].map((r) => r.stop())]);
 }
 
@@ -270,7 +330,18 @@ export function useSimVersion() {
 let tickTimer: any = null;
 export function startLoop() {
   if (tickTimer) return;
-  tickTimer = setInterval(() => sim.tick(), 40);
+  tickTimer = setInterval(() => {
+    sim.tick();
+    attachWbLogs();
+    for (const [id, e] of wbEngines) {
+      if (!e.running) {
+        // the controller lost power while the rules were running
+        if (useApp.getState().mcu[id]?.state === 'running') stopRules(id);
+        continue;
+      }
+      e.poll();
+    }
+  }, 40);
 }
 
 let saveTimer: any = null;
@@ -352,4 +423,4 @@ export async function restoreLast(): Promise<boolean> {
 }
 
 // expose for automated tests and debugging
-(globalThis as any).__rpi5sim = { sim, useApp, runProgram, stopProgram, getRuntime, runController, stopController, getMcuRuntime, saveNow, newProject, migrate, arrangeCircuit, layoutQuality, netSignature };
+(globalThis as any).__rpi5sim = { sim, useApp, runProgram, stopProgram, getRuntime, runController, stopController, getMcuRuntime, getWbEngine, saveNow, newProject, migrate, arrangeCircuit, layoutQuality, netSignature };

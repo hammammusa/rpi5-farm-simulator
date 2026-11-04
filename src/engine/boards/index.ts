@@ -53,9 +53,30 @@ export { ESP32_DEVKITC } from './esp32';
 export { WB74 } from './wb74';
 
 /** languages this build can actually run (a board only gets a program in one of these) */
-export const RUNNABLE_LANGUAGES: LanguageId[] = ['python', 'micropython', 'arduino'];
+export const RUNNABLE_LANGUAGES: LanguageId[] = ['python', 'micropython', 'arduino', 'wbrules'];
 
 export const DEFAULT_PROGRAMS: Partial<Record<LanguageId, string>> = {
+  wbrules: `// Wiren Board 7.4 - wb-rules (JavaScript ES5)
+// A dry contact between A2 and GND switches the load on A1 (A1 sinks to GND, load to V+).
+defineVirtualDevice("demo", {
+  title: "Demo",
+  cells: {
+    enabled: { type: "switch", value: true },
+    presses: { type: "value", value: 0, readonly: true }
+  }
+});
+
+defineRule("contact_to_output", {
+  whenChanged: "wb-gpio/A2_IN",
+  then: function (newValue, devName, cellName) {
+    var closed = !newValue; // a closed contact pulls A2 to GND
+    if (!dev["demo/enabled"]) return;
+    dev["wb-gpio/A1_OUT"] = closed;
+    if (closed) dev["demo/presses"] = dev["demo/presses"] + 1;
+    log("{}/{} = {} -> A1_OUT {}", devName, cellName, newValue, closed);
+  }
+});
+`,
   arduino: `// ESP32-DevKitC V4 - Arduino C++
 // Blink an LED on GPIO23 (GPIO23 -> 330 ohm -> LED -> GND)
 const int LED_PIN = 23;

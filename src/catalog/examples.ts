@@ -555,6 +555,33 @@ export const PART_EXAMPLES: Record<string, PartExample> = {
     wires: ['xcvr.VCC>pi.P1', 'xcvr.GND>pi.P6', 'xcvr.TX>pi.P10', 'xcvr.RX>pi.P8', 'xcvr.A>dut.A', 'xcvr.B>dut.B', 'dut.VCC>ps.P', 'dut.GND>ps.N', 'ps.N>pi.P39'],
     expect: /moisture 32\.0 %\s+temp 22\.0 °C\s+EC 800\s+pH 6\.5\s+NPK 40\/20\/60/,
   },
+  wb_mr6c: {
+    title: 'WB-MR6C relay K1 over Modbus RTU (raw frames through a MAX485)',
+    code: `import serial
+
+def crc16(data):
+    crc = 0xFFFF
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return bytes([crc & 0xFF, crc >> 8])
+
+def write_coil(port, slave, coil, on):
+    frame = bytes([slave, 5, 0, coil, 0xFF if on else 0, 0])   # function 05: write single coil
+    port.write(frame + crc16(frame))
+    return port.read(8)
+
+port = serial.Serial("/dev/serial0", 9600, timeout=0.5)
+reply = write_coil(port, 32, 0, True)   # coil 0 = relay K1
+print("K1 ON, reply", reply.hex())
+`,
+    helpers: ['ps'],
+    parts: [['xcvr', 'max485', 560, 80, { auto: true }]],
+    wires: ['xcvr.VCC>pi.P1', 'xcvr.GND>pi.P6', 'xcvr.TX>pi.P10', 'xcvr.RX>pi.P8', 'xcvr.A>dut.A', 'xcvr.B>dut.B', 'dut.VIN>ps.P', 'dut.GND>ps.N', 'ps.N>pi.P39'],
+    expect: /K1 ON, reply 20050000ff00[0-9a-f]{4}/,
+    verify: (s) => (vis(s, 'dut').ch?.[0] ? null : 'relay K1 should be closed'),
+  },
   // -------------------------------------------------------------- ADC & expanders
   mcp3008: {
     title: 'MCP3008 reading a potentiometer',

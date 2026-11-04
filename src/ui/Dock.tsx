@@ -4,7 +4,7 @@ import { sim, submitStdin, useSimVersion } from '../state/engine';
 import { useApp, type DockTab } from '../state/store';
 import { issueText, pyErrorText, useT } from '../i18n';
 import { compName } from '../state/wiring';
-import { BusMonitor, EventMonitor, SensorMonitor } from './Monitors';
+import { BusMonitor, EventMonitor, SensorMonitor, MqttMonitor } from './Monitors';
 import { Problems } from './Problems';
 import { getPart } from '../engine/parts';
 import type { SerialTerminal } from '../engine/devices/serialTerm';
@@ -228,6 +228,7 @@ export function Dock({ withCode = true }: { withCode?: boolean }) {
     ['sensors', 'Sensor readings'],
     ['events', 'Python events'],
     ['uart', 'UART monitor'],
+    ...(sim.wb.size ? ([['mqtt', 'MQTT']] as [DockTab, string][]) : []),
     ...(mode === 'advanced'
       ? ([
           ['bus', 'I2C / SPI monitor'],
@@ -274,6 +275,7 @@ export function Dock({ withCode = true }: { withCode?: boolean }) {
           {cur === 'bus' && <BusMonitor />}
           {cur === 'sensors' && <SensorMonitor />}
           {cur === 'events' && <EventMonitor />}
+          {cur === 'mqtt' && <MqttMonitor />}
         </div>
       )}
     </section>

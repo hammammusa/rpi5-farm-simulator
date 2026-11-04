@@ -3,6 +3,7 @@
 import { memo, useMemo } from 'react';
 import { ESP32_J2, ESP32_J3 } from '../../engine/boards/esp32';
 import { ESP32_H, ESP32_W } from '../../engine/parts/esp32';
+import { WB74_H, WB74_W } from '../../engine/parts/wb74';
 import type { ComponentInstance } from '../../engine/types';
 import type { PartManifest } from '../../engine/parts';
 import { NextionScreen } from '../nextion/NextionScreen';
@@ -296,6 +297,90 @@ function Esp32({ v }: { v: Record<string, any> | undefined }) {
   );
 }
 
+/** Wiren Board 7.4: DIN-rail housing, terminal blocks on top and bottom edges, live A1–A4 state */
+function Wb74({ v }: { v: Record<string, any> | undefined }) {
+  const powered = !!v?.powered;
+  const a: { v: number; out: boolean; trip: boolean }[] = v?.a ?? [];
+  const bottom = ['V+', 'V+', 'GND', 'A1', 'A2', 'A3', 'A4', 'GND'];
+  const top = ['W1', 'W2', 'GND', '485-1 A', '485-1 B', '485-2 A', '485-2 B'];
+  return (
+    <g>
+      <rect x={0} y={6} width={WB74_W} height={WB74_H - 12} rx={6} fill="#e9ecef" stroke="#8a9199" strokeWidth={1.5} />
+      <rect x={6} y={6} width={WB74_W - 12} height={16} fill="#cfd4da" />
+      <rect x={6} y={WB74_H - 22} width={WB74_W - 12} height={16} fill="#cfd4da" />
+      {top.map((l, i) => (
+        <text key={'t' + i} x={20 + i * 24} y={30} fontSize={5.5} textAnchor="middle" fill="#333">
+          {l}
+        </text>
+      ))}
+      {bottom.map((l, i) => {
+        const ch = /^A(\d)$/.exec(l);
+        const st = ch ? a[Number(ch[1]) - 1] : undefined;
+        return (
+          <g key={'b' + i}>
+            <text x={20 + i * 22} y={WB74_H - 28} fontSize={6} textAnchor="middle" fill="#333">
+              {l}
+            </text>
+            {ch && <circle cx={20 + i * 22} cy={WB74_H - 40} r={3} fill={!powered ? '#555' : st?.trip ? '#ff3b30' : st?.out ? '#3ad05a' : '#2a3a2e'} stroke="#222" strokeWidth={0.5} />}
+          </g>
+        );
+      })}
+      <rect x={40} y={46} width={120} height={60} rx={4} fill="#1d2a3a" />
+      <text x={100} y={68} fontSize={11} fontWeight={700} textAnchor="middle" fill="#e7eef7">
+        Wiren Board 7
+      </text>
+      <text x={100} y={82} fontSize={7} textAnchor="middle" fill="#9fb3c8">
+        {powered ? `${(v?.vin ?? 0).toFixed(1)} V · MQTT ${v?.running ? '· rules ▶' : ''}` : 'no power (9…48 V)'}
+      </text>
+      <circle cx={52} cy={96} r={3} fill={powered ? '#3ad05a' : '#333'} />
+      <text x={58} y={98} fontSize={5.5} fill="#9fb3c8">
+        PWR
+      </text>
+      <circle cx={84} cy={96} r={3} fill={v?.running ? '#ffcc00' : '#333'} />
+      <text x={90} y={98} fontSize={5.5} fill="#9fb3c8">
+        RULES
+      </text>
+    </g>
+  );
+}
+
+/** WB-MR6C: six relays with their contact state */
+function WbMr6c({ v }: { v: Record<string, any> | undefined }) {
+  const ch: boolean[] = v?.ch ?? [];
+  return (
+    <g>
+      <rect x={0} y={0} width={110} height={130} rx={5} fill="#e9ecef" stroke="#8a9199" strokeWidth={1.5} />
+      <text x={55} y={14} fontSize={8} fontWeight={700} textAnchor="middle" fill="#1d2a3a">
+        WB-MR6C
+      </text>
+      <text x={10} y={13} fontSize={5} fill="#333">
+        V+
+      </text>
+      {[1, 2, 3, 4, 5, 6].map((k) => (
+        <g key={k}>
+          <rect x={40} y={8 + (k - 1) * 20} width={30} height={14} rx={2} fill={ch[k - 1] ? '#3ad05a' : '#c9ced4'} stroke="#777" strokeWidth={0.6} />
+          <text x={55} y={18 + (k - 1) * 20} fontSize={6.5} textAnchor="middle" fill="#1d2a3a">
+            K{k}
+          </text>
+          <text x={96} y={13 + (k - 1) * 20} fontSize={5} textAnchor="end" fill="#333">
+            COM
+          </text>
+          <text x={96} y={23 + (k - 1) * 20} fontSize={5} textAnchor="end" fill="#333">
+            NO
+          </text>
+        </g>
+      ))}
+      <text x={10} y={43} fontSize={5} fill="#333">
+        A
+      </text>
+      <text x={10} y={53} fontSize={5} fill="#333">
+        B
+      </text>
+      <circle cx={14} cy={70} r={3} fill={v?.powered ? '#3ad05a' : '#555'} />
+    </g>
+  );
+}
+
 function body(p: PartProps) {
   const { comp, props, v, dev } = p;
   switch (DRAW_ALIAS[p.comp.type] ?? p.comp.type) {
@@ -303,6 +388,10 @@ function body(p: PartProps) {
       return <Pi5 />;
     case 'esp32_devkitc':
       return <Esp32 v={v} />;
+    case 'wb74':
+      return <Wb74 v={v} />;
+    case 'wb_mr6c':
+      return <WbMr6c v={v} />;
     case 'breadboard':
       return <Breadboard props={props} />;
     case 'led':
