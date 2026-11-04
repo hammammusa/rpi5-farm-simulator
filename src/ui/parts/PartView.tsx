@@ -1,6 +1,8 @@
 // SVG bodies for every component, drawn in local coordinates (before rotation).
 // Every animated/lit state comes from the simulator's computed visual state `v`.
 import { memo, useMemo } from 'react';
+import { ESP32_J2, ESP32_J3 } from '../../engine/boards/esp32';
+import { ESP32_H, ESP32_W } from '../../engine/parts/esp32';
 import type { ComponentInstance } from '../../engine/types';
 import type { PartManifest } from '../../engine/parts';
 import { NextionScreen } from '../nextion/NextionScreen';
@@ -236,11 +238,71 @@ const DRAW_ALIAS: Record<string, string> = {
   exhaust_fan: 'fan',
 };
 
+/** ESP32-DevKitC V4: WROOM-32 module, two 19-pin headers with their silkscreen names */
+function Esp32({ v }: { v: Record<string, any> | undefined }) {
+  const powered = !!v?.powered;
+  const gpio: Record<number, { v: number; ma: number }> = v?.gpio ?? {};
+  const label = (p: (typeof ESP32_J2)[number], i: number, right: boolean) => {
+    const y = 50 + i * 10;
+    const g = p.num !== undefined ? gpio[p.num] : undefined;
+    const high = powered && g && g.v > 1.65;
+    return (
+      <g key={p.pin}>
+        {p.kind === 'gpio' && <circle cx={right ? 98 : 22} cy={y} r={2.2} fill={high ? '#ffd23a' : '#3a3a3a'} />}
+        <text x={right ? 92 : 28} y={y + 2.3} fontSize={6.5} fontFamily="monospace" textAnchor={right ? 'end' : 'start'} fill={p.caps.flash ? '#e88' : '#fff'}>
+          {p.label}
+        </text>
+      </g>
+    );
+  };
+  return (
+    <g>
+      <rect x={0} y={0} width={ESP32_W} height={ESP32_H} rx={4} fill="#1b1b1b" stroke="#000" strokeWidth={1.5} />
+      {/* WROOM-32 module: PCB antenna + metal shield */}
+      <rect x={22} y={2} width={76} height={44} rx={2} fill="#222" stroke="#555" />
+      <path d="M28 6 h8 v8 h8 v-8 h8 v8 h8 v-8 h8 v8 h8 v-8" fill="none" stroke="#c9a227" strokeWidth={1.2} />
+      <rect x={26} y={18} width={68} height={26} rx={1.5} fill="#b9bcc2" stroke="#888" />
+      <text x={60} y={30} fontSize={7} textAnchor="middle" fill="#333">
+        ESP32-WROOM-32
+      </text>
+      <text x={60} y={39} fontSize={6} textAnchor="middle" fill="#555">
+        Espressif
+      </text>
+      {/* headers */}
+      <rect x={4} y={44} width={12} height={192} rx={1} fill="#111" />
+      <rect x={104} y={44} width={12} height={192} rx={1} fill="#111" />
+      {ESP32_J2.map((p, i) => label(p, i, false))}
+      {ESP32_J3.map((p, i) => label(p, i, true))}
+      {/* power LED, EN and BOOT buttons, micro-USB */}
+      <text x={60} y={118} fontSize={9} fontWeight={700} textAnchor="middle" fill={v?.running ? '#7fdc7f' : '#777'}>
+        {v?.running ? 'RUN' : 'IDLE'}
+      </text>
+      <circle cx={60} cy={140} r={3} fill={powered ? '#ff3b30' : '#4a1210'}>
+        <title>Power LED</title>
+      </circle>
+      <text x={60} y={152} fontSize={6} textAnchor="middle" fill="#aaa">
+        PWR
+      </text>
+      <rect x={32} y={239} width={12} height={8} rx={1} fill="#ddd">
+        <title>EN (reset)</title>
+      </rect>
+      <rect x={76} y={239} width={12} height={8} rx={1} fill="#ddd">
+        <title>BOOT (GPIO0)</title>
+      </rect>
+      <rect x={51} y={239} width={18} height={11} rx={1.5} fill="#c0c0c0" stroke="#777">
+        <title>micro-USB (5 V, USB-UART)</title>
+      </rect>
+    </g>
+  );
+}
+
 function body(p: PartProps) {
   const { comp, props, v, dev } = p;
   switch (DRAW_ALIAS[p.comp.type] ?? p.comp.type) {
     case 'rpi5':
       return <Pi5 />;
+    case 'esp32_devkitc':
+      return <Esp32 v={v} />;
     case 'breadboard':
       return <Breadboard props={props} />;
     case 'led':

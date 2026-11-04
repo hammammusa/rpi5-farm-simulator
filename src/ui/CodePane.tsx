@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store';
-import { runProgram, saveNow } from '../state/engine';
+import { resetController, runController, runProgram, saveNow, stopController } from '../state/engine';
+import { boardDef, controllersIn, LANGUAGES, RUNNABLE_LANGUAGES } from '../engine/boards';
 import { useT } from '../i18n';
 import { CodeEditor } from './Editor';
 
@@ -32,8 +33,7 @@ function folderTree(files: { name: string }[]): ExplorerRow[] {
       rows.push({ kind: 'folder', path: dir, label: dir.split('/').at(-1)!, depth });
       walk(dir, depth + 1);
     }
-    const children = files.filter((f) => !isFolderMarker(f.name) && parentPath(f.name) === parent)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const children = files.filter((f) => !isFolderMarker(f.name) && parentPath(f.name) === parent).sort((a, b) => a.name.localeCompare(b.name));
     for (const file of children) rows.push({ kind: 'file', path: file.name, label: file.name.split('/').at(-1)!, depth });
   };
   walk('', 0);
@@ -58,13 +58,20 @@ export function CodePane({ compact = false }: { compact?: boolean }) {
   const theme = useApp((s) => s.theme);
   const pyError = useApp((s) => s.pyError);
   const st = useApp.getState();
-  const file = files.find((f) => f.name === active && !isFolderMarker(f.name))
-    ?? files.find((f) => f.name === main)
-    ?? files.find((f) => !isFolderMarker(f.name))!;
+  const file = files.find((f) => f.name === active && !isFolderMarker(f.name)) ?? files.find((f) => f.name === main) ?? files.find((f) => !isFolderMarker(f.name))!;
   const [renaming, setRenaming] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [closed, setClosed] = useState<string[]>([]);
   const rows = folderTree(files);
+  const doc = useApp((s) => s.doc);
+  const mcuState = useApp((s) => s.mcu);
+  const mcus = controllersIn(doc).filter((c) => c.type !== 'rpi5' && doc.controllers?.[c.id] && RUNNABLE_LANGUAGES.includes(doc.controllers[c.id].language));
+  const piPresent = doc.components.some((c) => c.type === 'rpi5');
+  // the controller whose folder holds the open file ('' = Raspberry Pi)
+  const ctrl = mcus.find((c) => file.name.startsWith(c.id + '/'))?.id ?? '';
+  const ctrlComp = mcus.find((c) => c.id === ctrl);
+  const ctrlProg = ctrl ? doc.controllers![ctrl] : null;
+  const ctrlState = ctrl ? (mcuState[ctrl]?.state ?? 'idle') : 'idle';
 
   const createFile = (directory = '') => {
     const name = prompt(lang === 'ar' ? 'اسم الملف الجديد:' : 'New file name:', directory ? 'index.html' : 'module.py');
@@ -110,83 +117,138 @@ export function CodePane({ compact = false }: { compact?: boolean }) {
   };
 
   const errLine = pyError && pyError.file === file.name ? pyError.line : null;
+  const stateText = (s: string) => (s === 'loading' ? t('Loading…') : s === 'running' ? '▶ ' + t('Running') : s === 'stopping' ? '… ' + t('Stopping') : '● ' + t('Ready'));
   return (
-    <div className={'code-pane ' + (compact ? 'compact' : '')}>
-      <div className="file-explorer" aria-label={t('Files')}>
-        <div className="panel-title">
-          {t('Files')}
-          <button className="icon" title={lang === 'ar' ? 'إنشاء مجلد' : 'New folder'} aria-label={lang === 'ar' ? 'إنشاء مجلد' : 'New folder'} onClick={createFolder}>
-            📁＋
-          </button>
-          <button className="icon" title={t('New file')} aria-label={t('New file')} onClick={() => createFile()}>
-            ＋
-          </button>
-        </div>
-        {rows.filter((row) => isVisible(row.path, closed)).map((row) => (
-          row.kind === 'folder' ? (
-            <div key={'dir:' + row.path} className="file">
-              <button
-                className="file-name"
-                title={row.path}
-                style={{ paddingInlineStart: 6 + row.depth * 12 }}
-                onClick={() => setClosed((old) => old.includes(row.path) ? old.filter((p) => p !== row.path) : [...old, row.path])}
-              >
-                {closed.includes(row.path) ? '▸' : '▾'} 📁 {row.label}
-              </button>
-              <button className="icon" title={lang === 'ar' ? 'ملف جديد داخل المجلد' : 'New file in folder'} onClick={() => createFile(row.path)}>＋</button>
-              {files.some((f) => f.name === row.path + '/' + KEEP_FILE) && (
-                <button className="icon" title={lang === 'ar' ? 'حذف المجلد الفارغ' : 'Delete empty folder'} onClick={() => deleteEmptyFolder(row.path)}>×</button>
-              )}
-            </div>
-          ) : (
-            <div key={row.path} className={'file ' + (row.path === file.name ? 'on' : '')}>
-              {renaming === row.path ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const path = validPath(newName);
-                    if (path && !files.some((f) => f.name === path && f.name !== row.path)) st.renameFile(row.path, path);
-                    setRenaming(null);
-                  }}
-                >
-                  <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onBlur={() => setRenaming(null)} dir="ltr" />
-                </form>
+    <div className="code-pane-col">
+      {mcus.length > 0 && (
+        <div className="controller-bar" data-testid="controller-bar">
+          <label>
+            {t('Controller')}{' '}
+            <select value={ctrl} onChange={(e) => st.setActiveController(e.target.value)} data-testid="controller-select">
+              {(piPresent || !ctrl) && <option value="">Raspberry Pi 5 · Python</option>}
+              {mcus.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {boardDef(c.type)!.model} ({c.id})
+                </option>
+              ))}
+            </select>
+          </label>
+          {ctrlComp && ctrlProg && (
+            <>
+              <span className="ctrl-lang" title={LANGUAGES[ctrlProg.language].engine}>
+                {LANGUAGES[ctrlProg.language].label}
+              </span>
+              {ctrlState === 'idle' ? (
+                <button className="run small" onClick={() => void runController(ctrl)} data-testid="ctrl-run" title={t('Run this controller only')}>
+                  ▶ {t('Run')}
+                </button>
               ) : (
-                <button
-                  className="file-name"
-                  style={{ paddingInlineStart: 6 + row.depth * 12 }}
-                  onClick={() => st.setActiveFile(row.path)}
-                  onDoubleClick={() => (setRenaming(row.path), setNewName(row.path))}
-                  dir="ltr"
-                  title={row.path}
-                >
-                  {row.path.endsWith('.py') ? '🐍' : '📄'} {row.label}
-                  {row.path === main && <span className="badge">main</span>}
+                <button className="stop small" onClick={() => void stopController(ctrl)} data-testid="ctrl-stop">
+                  ■ {t('Stop')}
                 </button>
               )}
-              {row.path === file.name && !compact && (
-                <span className="file-actions">
-                  {row.path !== main && row.path.endsWith('.py') && (
-                    <button className="icon" title={t('Set as main file')} onClick={() => st.setMainFile(row.path)}>▶</button>
-                  )}
-                  {files.length > 1 && (
-                    <button className="icon" title={t('Delete file')} onClick={() => confirm(t('Delete {f}?', { f: row.path })) && st.deleteFile(row.path)}>✕</button>
-                  )}
-                </span>
+              <button className="small" onClick={() => void resetController(ctrl)} data-testid="ctrl-reset" title={t('EN button: restart the program from the beginning')}>
+                ↺ {t('Reset')}
+              </button>
+              <span className={'ctrl-state ' + ctrlState} data-testid="ctrl-state">
+                {stateText(ctrlState)}
+              </span>
+              {ctrlProg.main !== file.name && (
+                <button className="small" onClick={() => st.setActiveFile(ctrlProg.main)}>
+                  {t('Open main file')}
+                </button>
               )}
-            </div>
-          )
-        ))}
+            </>
+          )}
+        </div>
+      )}
+      <div className={'code-pane ' + (compact ? 'compact' : '')}>
+        <div className="file-explorer" aria-label={t('Files')}>
+          <div className="panel-title">
+            {t('Files')}
+            <button className="icon" title={lang === 'ar' ? 'إنشاء مجلد' : 'New folder'} aria-label={lang === 'ar' ? 'إنشاء مجلد' : 'New folder'} onClick={createFolder}>
+              📁＋
+            </button>
+            <button className="icon" title={t('New file')} aria-label={t('New file')} onClick={() => createFile()}>
+              ＋
+            </button>
+          </div>
+          {rows
+            .filter((row) => isVisible(row.path, closed))
+            .map((row) =>
+              row.kind === 'folder' ? (
+                <div key={'dir:' + row.path} className="file">
+                  <button
+                    className="file-name"
+                    title={row.path}
+                    style={{ paddingInlineStart: 6 + row.depth * 12 }}
+                    onClick={() => setClosed((old) => (old.includes(row.path) ? old.filter((p) => p !== row.path) : [...old, row.path]))}
+                  >
+                    {closed.includes(row.path) ? '▸' : '▾'} 📁 {row.label}
+                  </button>
+                  <button className="icon" title={lang === 'ar' ? 'ملف جديد داخل المجلد' : 'New file in folder'} onClick={() => createFile(row.path)}>
+                    ＋
+                  </button>
+                  {files.some((f) => f.name === row.path + '/' + KEEP_FILE) && (
+                    <button className="icon" title={lang === 'ar' ? 'حذف المجلد الفارغ' : 'Delete empty folder'} onClick={() => deleteEmptyFolder(row.path)}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div key={row.path} className={'file ' + (row.path === file.name ? 'on' : '')}>
+                  {renaming === row.path ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const path = validPath(newName);
+                        if (path && !files.some((f) => f.name === path && f.name !== row.path)) st.renameFile(row.path, path);
+                        setRenaming(null);
+                      }}
+                    >
+                      <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onBlur={() => setRenaming(null)} dir="ltr" />
+                    </form>
+                  ) : (
+                    <button
+                      className="file-name"
+                      style={{ paddingInlineStart: 6 + row.depth * 12 }}
+                      onClick={() => st.setActiveFile(row.path)}
+                      onDoubleClick={() => (setRenaming(row.path), setNewName(row.path))}
+                      dir="ltr"
+                      title={row.path}
+                    >
+                      {row.path.endsWith('.py') ? '🐍' : '📄'} {row.label}
+                      {(row.path === main || mcus.some((c) => doc.controllers![c.id].main === row.path)) && <span className="badge">main</span>}
+                    </button>
+                  )}
+                  {row.path === file.name && !compact && (
+                    <span className="file-actions">
+                      {row.path !== main && row.path.endsWith('.py') && !mcus.some((c) => row.path.startsWith(c.id + '/')) && (
+                        <button className="icon" title={t('Set as main file')} onClick={() => st.setMainFile(row.path)}>
+                          ▶
+                        </button>
+                      )}
+                      {files.length > 1 && (
+                        <button className="icon" title={t('Delete file')} onClick={() => confirm(t('Delete {f}?', { f: row.path })) && st.deleteFile(row.path)}>
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
+              ),
+            )}
+        </div>
+        <CodeEditor
+          value={file.content}
+          filename={file.name}
+          dark={theme === 'dark'}
+          errorLine={errLine}
+          onChange={(v) => st.setFile(file.name, v)}
+          onRun={() => void (ctrl ? runController(ctrl) : runProgram())}
+          onSave={() => void saveNow()}
+        />
       </div>
-      <CodeEditor
-        value={file.content}
-        filename={file.name}
-        dark={theme === 'dark'}
-        errorLine={errLine}
-        onChange={(v) => st.setFile(file.name, v)}
-        onRun={() => void runProgram()}
-        onSave={() => void saveNow()}
-      />
     </div>
   );
 }

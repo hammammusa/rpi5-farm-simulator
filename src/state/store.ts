@@ -1,5 +1,6 @@
 // Application state (zustand). The project document lives here; the simulator
 // is notified of every document change. Undo/redo snapshots the editable parts.
+import { ensureControllers } from '../engine/boards';
 import { arrangeCircuit, routeWires, type ArrangeOptions } from '../engine/layout';
 import { create } from 'zustand';
 import { defaultView, newProject, uid } from '../engine/project';
@@ -16,6 +17,13 @@ export type DockTab = 'terminal' | 'problems' | 'gpio' | 'uart' | 'logs' | 'code
 export interface TermLine {
   kind: 'out' | 'err' | 'sys' | 'in';
   text: string;
+  /** controller the line comes from (component id); absent = Raspberry Pi */
+  src?: string;
+}
+
+export interface McuStatus {
+  state: 'idle' | 'loading' | 'running' | 'stopping';
+  detail: string;
 }
 
 export interface PyErrorState {
@@ -26,7 +34,7 @@ export interface PyErrorState {
   traceback: string;
 }
 
-type Snapshot = Pick<ProjectDoc, 'components' | 'wires' | 'nextion' | 'farm' | 'files' | 'mainFile' | 'zones'>;
+type Snapshot = Pick<ProjectDoc, 'components' | 'wires' | 'nextion' | 'farm' | 'files' | 'mainFile' | 'zones' | 'controllers'>;
 
 interface AppState {
   doc: ProjectDoc;
@@ -44,6 +52,10 @@ interface AppState {
   activeFile: string;
   runtimeState: string;
   runtimeDetail: string;
+  /** run state of every microcontroller program, by component id */
+  mcu: Record<string, McuStatus>;
+  /** controller whose program the code pane shows ('' = Raspberry Pi) */
+  activeController: string;
   term: TermLine[];
   pyError: PyErrorState | null;
   stdinPending: boolean;
@@ -91,7 +103,9 @@ interface AppState {
   setTheme(t: 'dark' | 'light'): void;
   setLang(l: 'en' | 'ar'): void;
   setActiveFile(f: string): void;
-  termWrite(kind: TermLine['kind'], text: string): void;
+  termWrite(kind: TermLine['kind'], text: string, src?: string): void;
+  setMcu(id: string, s: McuStatus): void;
+  setActiveController(id: string): void;
   termClear(): void;
   setRuntime(state: string, detail?: string): void;
   setPyError(e: PyErrorState | null): void;
@@ -144,7 +158,7 @@ export function viewOf(doc: ProjectDoc): ViewSettings {
 
 let clipboard: { components: ComponentInstance[]; wires: Wire[] } | null = null;
 
-const snap = (d: ProjectDoc): Snapshot => ({ components: d.components, wires: d.wires, nextion: d.nextion, farm: d.farm, files: d.files, mainFile: d.mainFile, zones: d.zones });
+const snap = (d: ProjectDoc): Snapshot => ({ components: d.components, wires: d.wires, nextion: d.nextion, farm: d.farm, files: d.files, mainFile: d.mainFile, zones: d.zones, controllers: d.controllers });
 
 function readPref<T extends string>(key: string, def: T): T {
   try {
@@ -164,6 +178,10 @@ function writePref(key: string, v: string) {
 
 const MAX_TERM = 3000;
 
+/** a program runs on the Raspberry Pi or on any microcontroller */
+export const anyRunning = (s: { runtimeState: string; mcu: Record<string, McuStatus> }) =>
+  s.runtimeState === 'running' || s.runtimeState === 'stopping' || Object.values(s.mcu).some((m) => m.state !== 'idle');
+
 export const useApp = create<AppState>((set, get) => ({
   doc: newProject('My first Pi 5 project'),
   dirty: false,
@@ -180,6 +198,8 @@ export const useApp = create<AppState>((set, get) => ({
   activeFile: 'main.py',
   runtimeState: 'loading',
   runtimeDetail: '',
+  mcu: {},
+  activeController: '',
   term: [],
   pyError: null,
   stdinPending: false,
@@ -212,6 +232,7 @@ export const useApp = create<AppState>((set, get) => ({
       highlightNet: null,
       dirty: false,
       activeFile: doc.mainFile,
+      activeController: '',
       pyError: null,
       nextionPage: 0,
       nextionSel: null,
@@ -235,7 +256,7 @@ export const useApp = create<AppState>((set, get) => ({
     const id = uid(type.slice(0, 3));
     const c: ComponentInstance = { id, type, x, y, rotation: 0, props: { ...props } };
     if (type === 'rpi5' && get().doc.components.some((k) => k.type === 'rpi5')) get().showToast('Only one Raspberry Pi 5 runs your program; the extra board is ignored.');
-    get().edit((d) => ({ ...d, components: [...d.components, c] }));
+    get().edit((d) => ensureControllers({ ...d, components: [...d.components, c] }));
     set({ selection: [id], selectedWire: null });
     void m;
     return id;
@@ -381,23 +402,31 @@ export const useApp = create<AppState>((set, get) => ({
   setActiveFile(f) {
     set({ activeFile: f });
   },
-  termWrite(kind, text) {
+  termWrite(kind, text, src) {
     if (!text) return;
     const term = get().term.slice();
     const parts = text.split('\n');
     const last = term[term.length - 1];
-    // continue the previous line of the same kind if it had no newline
-    if (last && last.kind === kind && !last.text.endsWith('\n')) {
-      term[term.length - 1] = { kind, text: last.text + parts[0] + (parts.length > 1 ? '\n' : '') };
-    } else term.push({ kind, text: parts[0] + (parts.length > 1 ? '\n' : '') });
+    const tag = src ? { src } : {};
+    // continue the previous line of the same kind and source if it had no newline
+    if (last && last.kind === kind && last.src === src && !last.text.endsWith('\n')) {
+      term[term.length - 1] = { kind, text: last.text + parts[0] + (parts.length > 1 ? '\n' : ''), ...tag };
+    } else term.push({ kind, text: parts[0] + (parts.length > 1 ? '\n' : ''), ...tag });
     for (let i = 1; i < parts.length; i++) {
       if (i === parts.length - 1 && parts[i] === '') break;
-      term.push({ kind, text: parts[i] + (i < parts.length - 1 ? '\n' : '') });
+      term.push({ kind, text: parts[i] + (i < parts.length - 1 ? '\n' : ''), ...tag });
     }
     set({ term: term.length > MAX_TERM ? term.slice(-MAX_TERM) : term });
   },
   termClear() {
     set({ term: [] });
+  },
+  setMcu(id, m) {
+    set({ mcu: { ...get().mcu, [id]: m } });
+  },
+  setActiveController(id) {
+    const prog = id ? get().doc.controllers?.[id] : null;
+    set({ activeController: id, activeFile: prog ? prog.main : get().doc.mainFile });
   },
   setRuntime(state, detail) {
     set({ runtimeState: state, runtimeDetail: detail ?? get().runtimeDetail });

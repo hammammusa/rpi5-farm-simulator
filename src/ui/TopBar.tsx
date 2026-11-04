@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { cancelFastForward, fastForward, runProgram, saveNow, setSpeed, sim, stopProgram, resetSimulation } from '../state/engine';
-import { useApp, type Tab } from '../state/store';
+import { anyRunning, useApp, type Tab } from '../state/store';
 import { useT } from '../i18n';
 
 export const TABS: [Tab, string, string][] = [
@@ -40,7 +40,7 @@ export function TopBar() {
   const speed = useApp((s) => s.speed);
   const now = useSimClock();
   const st = useApp.getState();
-  const running = rs === 'running' || rs === 'stopping';
+  const running = useApp(anyRunning);
   const ff = useApp((s) => s.ff);
 
   const d = new Date(now);

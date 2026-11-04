@@ -5,12 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { PARTS } from '../../src/engine/parts';
 import { PART_EXAMPLES, buildPartExample } from '../../src/catalog/examples';
 import { Harness } from './pyharness';
+import { isController } from '../../src/engine/boards';
 
 const parts = PARTS.filter((m) => !m.hidden);
 
 describe('component catalogue', () => {
   it('every part has a fidelity level, a library group and (unless visual-only) an example', () => {
-    const missing = parts.filter((m) => m.fidelity !== 'visual' && !PART_EXAMPLES[m.type]).map((m) => m.type);
+    // microcontroller boards (ESP32 …) have their own example programs, tested in controllers.test.ts
+    const missing = parts.filter((m) => m.fidelity !== 'visual' && !PART_EXAMPLES[m.type] && !(isController(m.type) && m.type !== 'rpi5')).map((m) => m.type);
     expect(missing).toEqual([]);
     for (const m of parts) {
       expect(m.fidelity, m.type).toMatch(/^(full|functional|experimental|visual)$/);

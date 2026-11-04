@@ -26,7 +26,8 @@ export function Terminal() {
     <div className="terminal-wrap">
       <div className="terminal" ref={ref} dir="ltr" data-testid="terminal" role="log" aria-live="polite">
         {term.map((l, i) => (
-          <span key={i} className={`t-${l.kind}`}>
+          <span key={i} className={`t-${l.kind}`} data-src={l.src}>
+            {l.src && (i === 0 || term[i - 1].src !== l.src || term[i - 1].text.endsWith('\n')) && <span className="term-src">{l.src}</span>}
             {l.text}
           </span>
         ))}

@@ -2098,3 +2098,48 @@ p.err {
   font-size: 11px;
   padding: 1px 4px;
 }
+
+/* ------------------------------------------------ controller selector (ESP32 …) */
+.code-pane-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.controller-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.controller-bar select {
+  max-width: 260px;
+}
+.controller-bar button.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.controller-bar .ctrl-lang {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  opacity: 0.85;
+}
+.controller-bar .ctrl-state.running {
+  color: var(--accent);
+  font-weight: 600;
+}
+.term-src {
+  display: inline-block;
+  min-width: 3em;
+  margin-inline-end: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(127, 127, 127, 0.18);
+  font-size: 0.85em;
+  opacity: 0.85;
+}

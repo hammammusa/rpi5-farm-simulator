@@ -2,6 +2,8 @@
 import { useSyncExternalStore } from 'react';
 import { Simulator } from '../engine/simulator';
 import { PythonRuntime, type RunResult } from '../runtime/bridge';
+import { McuRuntime, type McuRunResult } from '../runtime/mcu/mcuRuntime';
+import { boardDef, controllersIn, LANGUAGES, RUNNABLE_LANGUAGES } from '../engine/boards';
 import { useApp } from './store';
 import { lastProjectId, loadProject as idbLoad, migrate, saveProject } from './persist';
 import { newProject } from '../engine/project';
@@ -97,8 +99,101 @@ function onDone(r: RunResult, files: { name: string; content: string }[]) {
   }
 }
 
+// ------------------------------------------------------------ microcontroller programs
+const mcuRuntimes = new Map<string, McuRuntime>();
+
+/** microcontrollers (not the Raspberry Pi) placed in the project that have a runnable program */
+export function mcuControllers() {
+  const doc = useApp.getState().doc;
+  return controllersIn(doc).filter((c) => c.type !== 'rpi5' && doc.controllers?.[c.id] && RUNNABLE_LANGUAGES.includes(doc.controllers[c.id].language));
+}
+
+export function getMcuRuntime(id: string) {
+  return mcuRuntimes.get(id) ?? null;
+}
+
+function mcuRuntime(id: string): McuRuntime {
+  let rt = mcuRuntimes.get(id);
+  if (!rt) {
+    rt = new McuRuntime(
+      sim,
+      id,
+      {
+        stdout: (t) => useApp.getState().termWrite('out', t, id),
+        stderr: (t) => useApp.getState().termWrite('err', t, id),
+        state: (s, d) => useApp.getState().setMcu(id, { state: s, detail: d ?? useApp.getState().mcu[id]?.detail ?? '' }),
+        done: (r) => onMcuDone(id, r),
+      },
+      import.meta.env.BASE_URL,
+    );
+    mcuRuntimes.set(id, rt);
+  }
+  return rt;
+}
+
+function onMcuDone(id: string, r: McuRunResult) {
+  const st = useApp.getState();
+  const T = (s: string, p?: any) => translate(st.lang, s, p);
+  if (r.status === 'ok') st.termWrite('sys', `\n${T('Program finished.')}\n`, id);
+  else if (r.status === 'stopped') st.termWrite('sys', `\n${T('Program stopped.')}\n`, id);
+  else if (r.status === 'reset') {
+    st.termWrite('sys', `\n${T('Board reset — restarting the program…')}\n`, id);
+    setTimeout(() => void runController(id, false), 300);
+  } else if (r.error) {
+    st.setPyError({ ...r.error });
+    const hint = pyErrorText(st.lang, r.error.type);
+    if (hint) st.termWrite('sys', `💡 ${hint}\n`, id);
+    st.setDock('terminal');
+  }
+}
+
+/** Run the program of one microcontroller (ESP32 …). */
+export async function runController(id: string, clearError = true) {
+  const st = useApp.getState();
+  if (typeof SharedArrayBuffer === 'undefined' || !(globalThis as any).crossOriginIsolated) {
+    st.termWrite('err', translate(st.lang, 'This page is not cross-origin isolated, so SharedArrayBuffer is unavailable. Reload the page (the service worker enables isolation on the first load).') + '\n', id);
+    return;
+  }
+  const doc = st.doc;
+  const comp = doc.components.find((c) => c.id === id);
+  const prog = doc.controllers?.[id];
+  if (!comp || !prog) return;
+  const file = doc.files.find((f) => f.name === prog.main);
+  if (!file) {
+    st.termWrite('err', `${translate(st.lang, 'Main file not found: {f}', { f: prog.main })}\n`, id);
+    return;
+  }
+  if (clearError) st.setPyError(null);
+  const rt = mcuRuntime(id);
+  if (rt.busy) await rt.stop();
+  const def = boardDef(comp.type)!;
+  st.termWrite('sys', `--- ${def.model} · ${LANGUAGES[prog.language].label} · ${prog.main} ---\n`, id);
+  sim.pyEvent('run', `${id}: ${prog.main}`);
+  await rt.run(prog.language, useApp.getState().doc.files, prog.main);
+}
+
+export async function stopController(id: string) {
+  await mcuRuntimes.get(id)?.stop();
+}
+
+/** EN button: stop the program and start it again from the beginning */
+export async function resetController(id: string) {
+  await stopController(id);
+  useApp.getState().termWrite('sys', `${translate(useApp.getState().lang, 'Board reset — restarting the program…')}\n`, id);
+  await runController(id);
+}
+
+/** Run every program in the project: the Raspberry Pi's and each microcontroller's. */
 export async function runProgram() {
   const st = useApp.getState();
+  const mcus = mcuControllers();
+  // without a Raspberry Pi in an ESP32 project, only the ESP32 programs run
+  const piPresent = st.doc.components.some((c) => c.type === 'rpi5');
+  if (mcus.length && !piPresent) {
+    st.termClear();
+    await Promise.all(mcus.map((c) => runController(c.id)));
+    return;
+  }
   const rt = startRuntime();
   if (!rt) return;
   // finish the previous run first so its "stopped" message lands before the new prompt
@@ -108,11 +203,12 @@ export async function runProgram() {
   st.termWrite('sys', `$ python3 ${st.doc.mainFile}\n`);
   sim.pyEvent('run', `python3 ${st.doc.mainFile}`);
   if (rt.state === 'loading') st.termWrite('sys', translate(st.lang, 'Python is still loading — the program will start in a moment…') + '\n');
+  for (const c of mcus) void runController(c.id, false);
   await rt.run(st.doc.files, st.doc.mainFile);
 }
 
 export async function stopProgram() {
-  await runtime?.stop();
+  await Promise.all([runtime?.stop(), ...[...mcuRuntimes.values()].map((r) => r.stop())]);
 }
 
 export function resetSimulation() {
@@ -256,4 +352,4 @@ export async function restoreLast(): Promise<boolean> {
 }
 
 // expose for automated tests and debugging
-(globalThis as any).__rpi5sim = { sim, useApp, runProgram, stopProgram, getRuntime, saveNow, newProject, migrate, arrangeCircuit, layoutQuality, netSignature };
+(globalThis as any).__rpi5sim = { sim, useApp, runProgram, stopProgram, getRuntime, runController, stopController, getMcuRuntime, saveNow, newProject, migrate, arrangeCircuit, layoutQuality, netSignature };

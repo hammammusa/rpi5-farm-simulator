@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { useApp } from '../state/store';
+import { anyRunning, useApp } from '../state/store';
 import { runProgram, saveNow, startLoop, startRuntime, stopProgram, restoreLast, writeRecovery } from '../state/engine';
 import { useT } from '../i18n';
 import { TopBar } from './TopBar';
@@ -115,7 +115,7 @@ export function App() {
     startLoop();
     void restoreLast().finally(() => startRuntime());
     const kd = (e: KeyboardEvent) => {
-      const rs = useApp.getState().runtimeState;
+      const rs = anyRunning(useApp.getState()) ? 'running' : useApp.getState().runtimeState;
       if (e.key === 'F5' && e.shiftKey) {
         e.preventDefault();
         void stopProgram();

@@ -6,7 +6,7 @@ import type { ComponentInstance, PinRef, ViewSettings, Wire, WireRoute, Zone } f
 import { WIRE_COLORS, WIRE_WIDTHS } from '../engine/project';
 import { expandWire, findCrossings, pathD, type Pt } from '../engine/routing';
 import { sim, useSimVersion } from '../state/engine';
-import { compBounds, useApp, viewOf } from '../state/store';
+import { anyRunning, compBounds, useApp, viewOf } from '../state/store';
 import { useT } from '../i18n';
 import { PartBody } from './parts/PartView';
 import { compName, pinName } from '../state/wiring';
@@ -126,7 +126,7 @@ export function Workspace() {
   const selectedWire = useApp((s) => s.selectedWire);
   const highlightNet = useApp((s) => s.highlightNet);
   const mode = useApp((s) => s.mode);
-  const running = useApp((s) => s.runtimeState === 'running');
+  const running = useApp(anyRunning);
   const vs = viewOf(doc);
   const rootRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);

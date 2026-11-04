@@ -68,8 +68,6 @@ export const esp32: PartManifest = {
     },
   ],
   faults: [FAULT.none, FAULT.powerFail],
-  // hidden from the library until the controller UI (editor, Run/Stop, drawing) ships
-  hidden: true,
   support: 'full',
   limits: ESP32_DEVKITC.limits,
   voltage: '5 V USB or 5V pin (on-board 3.3 V regulator); GPIO 3.3 V, not 5 V tolerant',

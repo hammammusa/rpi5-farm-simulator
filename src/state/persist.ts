@@ -1,4 +1,5 @@
 // Project storage in IndexedDB (idb-keyval) + JSON/ZIP import/export.
+import { ensureControllers } from '../engine/boards';
 import { createStore, del, get, set } from 'idb-keyval';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { ProjectDoc } from '../engine/types';
@@ -66,7 +67,8 @@ export async function lastProjectId(): Promise<string | null> {
  */
 export function migrate(d: any): ProjectDoc {
   const view = { ...defaultView(), ...(d.view ?? {}) };
-  return {
+  // controller programs (ESP32 …): kept when valid, created for boards that have none
+  return ensureControllers({
     schema: CURRENT_SCHEMA,
     id: d.id ?? uid('p'),
     name: d.name ?? 'Imported project',
@@ -90,7 +92,8 @@ export function migrate(d: any): ProjectDoc {
     notes: d.notes,
     description: d.description,
     view,
-  };
+    controllers: d.controllers && typeof d.controllers === 'object' ? d.controllers : undefined,
+  });
 }
 
 export function exportJson(doc: ProjectDoc): Blob {
