@@ -3,7 +3,7 @@
 // against the simulated circuit and farm, and is judged on the program output and the circuit.
 import { describe, expect, it } from 'vitest';
 import { piMasterCircuit, espMasterCircuit, wbMasterCircuit } from '../../src/library/masters/circuits';
-import { masterScenarios, sampleMaster, startAt, type MasterBoard, type MasterCtl, type MasterScenario } from '../../src/library/masters/scenarios';
+import { masterScenarios, runDueEvents, sampleMaster, startAt, type MasterBoard, type MasterCtl, type MasterScenario } from '../../src/library/masters/scenarios';
 import type { ProjectDoc } from '../../src/engine/types';
 import { Harness } from './pyharness';
 import { McuHarness } from './mcuharness';
@@ -26,7 +26,7 @@ export async function runMasterScenario(board: MasterBoard, sc: MasterScenario, 
   let last = 0;
   const step = () => {
     const t = sim.clock.now() - t0;
-    while (events.length && t >= events[0].at) events.shift()!.run(ctl);
+    runDueEvents(events, t, ctl);
     sampleMaster(sim, t, ctl.mem, Math.max(0, t - last));
     last = t;
   };

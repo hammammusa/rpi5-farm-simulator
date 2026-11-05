@@ -5,7 +5,7 @@
 import { sim } from '../../state/engine';
 import { useApp } from '../../state/store';
 import type { Scenario, TestHost } from '../../tests/host';
-import { masterScenarios, sampleMaster, startAt, type MasterCtl, type MasterScenario } from './scenarios';
+import { masterScenarios, runDueEvents, sampleMaster, startAt, type MasterCtl, type MasterScenario } from './scenarios';
 import type { MasterProject } from './study';
 
 export function inAppScenario(m: MasterProject, ms: MasterScenario, lang: 'en' | 'ar' = 'en'): Scenario {
@@ -27,7 +27,7 @@ export function inAppScenario(m: MasterProject, ms: MasterScenario, lang: 'en' |
         const events = [...ms.events].sort((a, b) => a.at - b.at);
         let last = 0;
         await h.waitSim(ms.seconds, (t) => {
-          while (events.length && t >= events[0].at) events.shift()!.run(ctl);
+          runDueEvents(events, t, ctl);
           sampleMaster(sim, t, ctl.mem, Math.max(0, t - last));
           last = t;
         });

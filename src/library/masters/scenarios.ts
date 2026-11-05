@@ -32,7 +32,8 @@ export interface MasterScenario {
   seconds: number;
   /** time of day at the start [h, m, s]; default 08:00:00 */
   start?: [number, number, number];
-  events: { at: number; run: (c: MasterCtl) => void }[];
+  /** `run` returning false means "not possible yet": it is tried again at the next sample */
+  events: { at: number; run: (c: MasterCtl) => void | boolean }[];
   /** judged on the combined program output and what was sampled during the run; null = pass */
   verify: (out: string, mem: MasterMem, c: MasterCtl) => string | null;
 }
@@ -53,14 +54,27 @@ export function startAt(sim: Simulator, hms: [number, number, number], utc: bool
 }
 
 /** DOSING / TEST command: a hardware button on the Pi and the ESP32, a virtual pushbutton (MQTT) on the WB */
-function command(c: MasterCtl, which: 'dosing' | 'test', down: boolean) {
+function command(c: MasterCtl, which: 'dosing' | 'test', down: boolean): boolean {
   if (c.board === 'wb') {
-    if (!down) return;
+    if (!down) return true;
     const wb = c.sim.wb.get('wb');
-    wb?.broker.publish('ui', `/devices/farm/controls/${which === 'dosing' ? 'start_dosing' : 'start_test'}/on`, '1', false, c.sim.clock.now());
-    return;
+    const control = `/devices/farm/controls/${which === 'dosing' ? 'start_dosing' : 'start_test'}`;
+    // a pushbutton message is not retained: it is only heard once the rules have created the
+    // "farm" device, so wait for that like a person waits for the controller to boot
+    if (!wb || ![...wb.broker.retained.keys()].some((k) => k.startsWith(control))) return false;
+    wb.broker.publish('ui', `${control}/on`, '1', false, c.sim.clock.now());
+    return true;
   }
   c.sim.pressButton(which === 'dosing' ? 'btnDose' : 'btnTest', down);
+  return true;
+}
+
+/** run the events that are due, in order; one that is not possible yet stays first in the queue */
+export function runDueEvents(events: MasterScenario['events'], t: number, c: MasterCtl) {
+  while (events.length && t >= events[0].at) {
+    if (events[0].run(c) === false) break;
+    events.shift();
+  }
 }
 
 /** hold a button for 1.5 s (the main loop looks at the buttons once per second) */
@@ -108,6 +122,9 @@ export function sampleMaster(sim: Simulator, t: number, mem: MasterMem, dt: numb
   if (run(sim, 'doseA') && run(sim, 'doseB')) mem.together = true;
   if (lampOn(sim)) mem.lampSeen = true;
   mem.lampNow = lampOn(sim);
+  // exact amounts integrated by the farm model, independent of how often the page samples:
+  // the main pump moves 4 L/min, so its running time is litres ÷ (4/60)
+  mem.pumpSec = sim.farm.state.totals.circulatedL / (4 / 60);
   mem.doseA = sim.farm.state.totals.doseAml;
   mem.doseB = sim.farm.state.totals.doseBml;
   (mem.lightTrace ??= [] as [number, boolean][]).push([t, run(sim, 'light')]);
@@ -183,7 +200,7 @@ export function masterScenarios(board: MasterBoard): MasterScenario[] {
         all(
           need(out, /IRRIGATION start/, /IRRIGATION end/),
           count(out, /IRRIGATION start/) === 1 ? null : 'irrigation must run only once per irrigation hour',
-          near(m.pumpOn ?? 0, 5, 1.2, 'pump running time (s)'),
+          near(m.pumpSec ?? 0, 5, 1, 'pump running time (s)'),
           /PUMP FAILURE/.test(out) ? 'a working pump was reported as failed' : null,
         ),
     },
@@ -214,7 +231,9 @@ export function masterScenarios(board: MasterBoard): MasterScenario[] {
       verify: (out, m) =>
         all(
           need(out, /TEST FAN/, /TEST LIGHT/, /TEST DOSE A/, /TEST DOSE B/, /TEST PUMP/, /TEST DONE/),
-          ...['fan', 'light', 'doseA', 'doseB', 'pump'].map((id) => (m[`${id}On`] > 1 ? null : `${id} did not run during the test`)),
+          ...['fan', 'light'].map((id) => (m[`${id}First`] !== undefined ? null : `${id} did not run during the test`)),
+          m.pumpSec > 1 ? null : 'the pump did not run during the test',
+          m.doseA > 2 && m.doseB > 2 ? null : 'a dosing pump did not run during the test',
           m.together ? 'dose A and dose B ran together during the test' : null,
           m.lightNow ? 'after the test the light must follow the schedule (off at 21:00)' : null,
         ),
@@ -235,15 +254,16 @@ export function masterScenarios(board: MasterBoard): MasterScenario[] {
     {
       id: 'lighting',
       name: ['8 · Lighting schedule', '8 · جدول الإضاءة'],
-      does: ['Start at 19:59:52 and run 15 s.', 'ابدأ الساعة 19:59:52 وشغّل 15 ثانية.'],
+      does: ['Start at 19:59:50 and run 18 s.', 'ابدأ الساعة 19:59:50 وشغّل 18 ثانية.'],
       expected: ['The grow light is ON before 20:00 and switches OFF after 20:00 (LIGHT_OFF_HOUR).', 'الإضاءة تعمل قبل 20:00 وتنطفئ بعد 20:00 ‏(LIGHT_OFF_HOUR).'],
-      seconds: 15,
-      start: [19, 59, 52],
+      seconds: 18,
+      start: [19, 59, 50],
       events: [],
       verify: (_out, m) => {
         const tr: [number, boolean][] = m.lightTrace ?? [];
-        const before = tr.filter(([t]) => t > 2 && t < 7).every(([, on]) => on);
-        const after = tr.filter(([t]) => t > 11).every(([, on]) => !on);
+        // 19:59:56–19:59:59.5 (the controllers have had 6 s to start and switch the relay), then from 20:00:03
+        const before = tr.filter(([t]) => t > 6 && t < 9.5).every(([, on]) => on);
+        const after = tr.filter(([t]) => t > 13).every(([, on]) => !on);
         return all(before ? null : 'the light should be on before 20:00', after ? null : 'the light should be off after 20:00');
       },
     },

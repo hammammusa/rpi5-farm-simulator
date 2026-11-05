@@ -16,6 +16,8 @@ type Tab = 'sections' | 'wiring' | 'tests' | 'recall' | 'exercises' | 'compare' 
 
 /** results of the last in-app run per project, also used by the PDF export */
 export const MASTER_REPORTS: Record<string, ScenarioReport[]> = {};
+// handle for automated browser checks (the full program output of each scenario is in `steps`)
+(globalThis as any).__rpi5masters = { MASTER_REPORTS };
 
 const STATUS_RE = /STATUS mode=(\S+) temp=(\S+) hum=(\S+) co2=(\S+) ph=(\S+) ec=(\S+) level=(\S+) pump=(\S+) fan=(\S+) light=(\S+) alarm=(.+?) day=(\d+)/g;
 

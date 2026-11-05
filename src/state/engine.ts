@@ -185,6 +185,10 @@ async function runRules(id: string, clearError: boolean) {
   st.termWrite('sys', `--- Wiren Board 7.4 · wb-rules (QuickJS) · ${prog.main} ---\n`, id);
   sim.controllerStart(id);
   sim.pyEvent('run', `${id}: wb-rules ${prog.main}`);
+  // wb-rules runs on the controller: it starts once the board has booted. Booting resets the MQTT
+  // broker, so an engine started earlier would lose its subscriptions and never see a value.
+  const wb = sim.wb.get(id);
+  for (let waited = 0; wb && !wb.booted() && waited < 5000; waited += 20) await new Promise((r) => setTimeout(r, 20));
   const r = await e.start(useApp.getState().doc.files, prog.main);
   if (!r.ok) {
     sim.controllerEnd(id);

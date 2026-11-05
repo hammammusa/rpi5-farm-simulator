@@ -118,7 +118,12 @@ for (const P of PROJECTS) {
     await page.getByTestId(`recall-check-${P.recall}`).click();
     await expect(page.getByTestId(`recall-result-${P.recall}`)).toHaveClass(/bad/, { timeout: 240_000 });
     await page.getByTestId(`recall-restore-${P.recall}`).click();
+    await expect(page.getByTestId(`recall-check-${P.recall}`)).toBeEnabled();
     await page.getByTestId(`recall-check-${P.recall}`).click();
-    await expect(page.getByTestId(`recall-result-${P.recall}`)).toHaveClass(/ok/, { timeout: 240_000 });
+    await expect(page.getByTestId(`recall-check-${P.recall}`)).toBeDisabled();
+    await expect(page.getByTestId(`recall-check-${P.recall}`)).toBeEnabled({ timeout: 240_000 });
+    const cls = await page.getByTestId(`recall-result-${P.recall}`).getAttribute('class');
+    if (cls !== 'ok') console.log('RECALL OUTPUT', await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().term.map((l: any) => l.text).join('')));
+    await expect(page.getByTestId(`recall-result-${P.recall}`)).toHaveClass(/ok/);
   });
 }

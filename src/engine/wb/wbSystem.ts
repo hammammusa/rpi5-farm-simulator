@@ -115,6 +115,11 @@ export class WbSystem {
     return !!this.sim.vis.get(this.id)?.powered;
   }
 
+  /** the controller has power and has booted (broker and drivers are up): wb-rules may start */
+  booted() {
+    return this.wasPowered && this.powered();
+  }
+
   private rt() {
     return this.sim.rtOf(this.id);
   }
