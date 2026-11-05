@@ -2,7 +2,7 @@
 // its Python runs against the simulated circuit and produces the expected result under
 // the test inputs, the default layout is clean, the project survives save/reopen and
 // export, and Auto Arrange does not change what the circuit does.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { LIBRARY } from '../../src/library';
 import { buildLibDoc, rawDoc } from '../../src/library/build';
 import type { LibExample } from '../../src/library/dsl';
@@ -61,6 +61,11 @@ function scramble(d: ProjectDoc): ProjectDoc {
  * every part necessarily cross the signal wires, so the allowance grows with the circuit. */
 const crossingLimit = (wires: number) => Math.max(6, Math.round(wires * (wires >= 40 ? 6 : wires >= 25 ? 4.5 : 3.5)));
 
+// These tests are long and synchronous (arranging and routing every example). Vitest chains sync
+// tests through microtasks only, so without a macrotask yield the worker could not answer the
+// runner's RPC for minutes ("Timeout calling onTaskUpdate" on slow CI runners).
+afterEach(() => new Promise<void>((r) => setTimeout(r, 0)));
+
 describe('example library', () => {
   it('holds at least 100 runnable examples with unique ids, in every category', () => {
     expect(LIBRARY.length).toBeGreaterThanOrEqual(100);
@@ -70,9 +75,13 @@ describe('example library', () => {
 
 describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s', (_id, entry) => {
   const e = entry.spec!;
-  const doc = buildLibDoc(e);
+  // built inside the tests (not while collecting): arranging every example at collection time
+  // blocked the worker for over a minute on slow CI runners
+  let built: ProjectDoc | null = null;
+  const D = () => (built ??= buildLibDoc(e));
 
   it('1–4 every part, pin and wire exists; nothing is left unconnected', () => {
+    const doc = D();
     for (const [, type] of e.parts) expect(hasPart(type), type).toBe(true);
     const ids = new Set(doc.components.map((c) => c.id));
     for (const w of doc.wires)
@@ -91,6 +100,7 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
   });
 
   it('5–6 the code runs and produces the expected result under the test inputs', async () => {
+    const doc = D();
     const { r, out, verdict, errors } = await runExample(e, doc);
     expect(r.status, out).not.toBe('error');
     // like a real Pi program, every example keeps running until the user presses Stop
@@ -101,6 +111,7 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
   }, 90_000);
 
   it('7–9 default layout: no overlapping parts, no dangling wires, wires keep off other parts', () => {
+    const doc = D();
     const q = layoutQuality(doc);
     expect(q.overlaps).toEqual([]);
     expect(q.dangling).toEqual([]);
@@ -109,6 +120,7 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
   });
 
   it('10–11 save/reopen keeps the circuit; the wiring table matches it', () => {
+    const doc = D();
     const back = migrate(JSON.parse(JSON.stringify(doc)));
     expect(back.components).toEqual(doc.components);
     expect(back.wires).toEqual(doc.wires);
@@ -119,6 +131,7 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
   });
 
   it('12 Auto Arrange of a scrambled copy keeps every connection and the program result', async () => {
+    const doc = D();
     const arranged = arrangeCircuit(scramble(rawDoc(e)));
     expect(netSignature(arranged)).toEqual(netSignature(doc));
     expect(arranged.files).toEqual(doc.files);
@@ -131,9 +144,13 @@ describe.each(LIBRARY.filter((e) => e.spec).map((e) => [e.id, e] as const))('%s'
 // the 20 guided examples: their programs and scenario checks run in examples.test.ts and the
 // browser tests; here their default layout, save/reopen, report and Auto Arrange are checked
 describe.each(LIBRARY.filter((e) => e.legacy).map((e) => [e.id, e] as const))('%s', (_id, entry) => {
-  const doc = entry.build();
+  // built inside the tests (not while collecting): arranging every example at collection time
+  // blocked the worker for over a minute on slow CI runners
+  let built: ProjectDoc | null = null;
+  const D = () => (built ??= entry.build());
 
   it('7–9 default layout: no overlapping parts, no dangling wires, wires keep off other parts', () => {
+    const doc = D();
     const q = layoutQuality(doc);
     expect(q.overlaps).toEqual([]);
     expect(q.dangling).toEqual([]);
@@ -142,6 +159,7 @@ describe.each(LIBRARY.filter((e) => e.legacy).map((e) => [e.id, e] as const))('%
   });
 
   it('10–11 save/reopen keeps the circuit; the wiring table matches it', () => {
+    const doc = D();
     const back = migrate(JSON.parse(JSON.stringify(doc)));
     expect(back.components).toEqual(doc.components);
     expect(back.wires).toEqual(doc.wires);
@@ -150,6 +168,7 @@ describe.each(LIBRARY.filter((e) => e.legacy).map((e) => [e.id, e] as const))('%
   });
 
   it('12 Auto Arrange of a scrambled copy keeps every connection', () => {
+    const doc = D();
     const arranged = arrangeCircuit(scramble(doc));
     expect(netSignature(arranged)).toEqual(netSignature(doc));
     expect(arranged.files).toEqual(doc.files);
