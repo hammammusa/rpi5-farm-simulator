@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Example } from '../../examples';
 import { uid } from '../../engine/project';
 import { getPart, hasPart } from '../../engine/parts';
@@ -8,6 +8,7 @@ import { runScenario, type ScenarioReport } from '../../tests/host';
 import { useT } from '../../i18n';
 import { CATEGORIES, LIBRARY, libraryEntry, libraryTypes, type Bi, type Cat, type LibraryEntry, type Level } from '../../library';
 import { Docs } from './Docs';
+import { MasterStudy } from './MasterStudy';
 
 const LEVELS: Level[] = ['beginner', 'intermediate', 'advanced'];
 const LEVEL_RANK: Record<Level, number> = { beginner: 0, intermediate: 1, advanced: 2 };
@@ -41,6 +42,24 @@ const toggle = (list: string[], id: string, on: boolean) => (on ? [...new Set([.
 let progressCache: Progress | null = null;
 const REPORTS: Record<string, ScenarioReport[]> = {};
 let lastSel: string | null = null;
+let typesCache: ReturnType<typeof libraryTypes> | null = null;
+
+// Focused Study Mode: only the three COMPETITION MASTER projects are listed (nothing is deleted)
+const FOCUS_KEY = 'rpi5sim.focusStudy';
+function loadFocus() {
+  try {
+    return localStorage.getItem(FOCUS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function saveFocus(on: boolean) {
+  try {
+    localStorage.setItem(FOCUS_KEY, on ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+}
 
 /** Opens an example as a private copy (new project id, saved on its own). */
 export async function openEntry(e: LibraryEntry) {
@@ -74,7 +93,10 @@ function suggestions(e: LibraryEntry, p: Progress): LibraryEntry[] {
   const sameCat = LIBRARY.filter((x) => fresh(x) && x.cat === e.cat && LEVEL_RANK[x.level] >= rank).sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level] || a.n - b.n);
   const mine = new Set(e.types.filter((t) => t !== 'rpi5' && t !== 'resistor'));
   const shared = (x: LibraryEntry) => x.types.filter((t) => mine.has(t)).length;
-  const related = LIBRARY.filter((x) => fresh(x) && x.cat !== e.cat && shared(x) > 0 && LEVEL_RANK[x.level] - rank >= 0 && LEVEL_RANK[x.level] - rank <= 1).sort((a, b) => shared(b) - shared(a) || a.n - b.n);
+  // building a legacy / controller project to know its parts takes time: until the background
+  // pass of the component filter has run, related projects come from the cheap entries only
+  const known = (x: LibraryEntry) => !!typesCache || !!x.spec || !!x.master;
+  const related = LIBRARY.filter((x) => fresh(x) && known(x) && x.cat !== e.cat && shared(x) > 0 && LEVEL_RANK[x.level] - rank >= 0 && LEVEL_RANK[x.level] - rank <= 1).sort((a, b) => shared(b) - shared(a) || a.n - b.n);
   return [...sameCat.slice(0, 2), ...related.slice(0, 2)].slice(0, 4);
 }
 
@@ -92,8 +114,32 @@ export default function LearnTab() {
   const [comp, setComp] = useState('all');
   const [status, setStatus] = useState<Status>('all');
   const [sort, setSort] = useState<Sort>('number');
+  const [focus, setFocusState] = useState(loadFocus);
+  const setFocus = (on: boolean) => {
+    saveFocus(on);
+    setFocusState(on);
+    if (on && !libraryEntry(sel)?.master) setSel(LIBRARY.find((x) => x.master)!.id);
+  };
   const L = (b: Bi) => (lang === 'ar' ? b[1] : b[0]);
-  const types = useMemo(() => libraryTypes(), []);
+  // the component filter needs the parts of all 164 projects; building them takes seconds, so it
+  // is computed one project per tick after the first paint (or at once when the list is opened)
+  const [types, setTypes] = useState<ReturnType<typeof libraryTypes>>(() => typesCache ?? []);
+  useEffect(() => {
+    if (typesCache) return;
+    let i = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const step = () => {
+      if (typesCache) return setTypes(typesCache);
+      void LIBRARY[i++]?.types;
+      if (i < LIBRARY.length) timer = setTimeout(step, 0);
+      else setTypes((typesCache = libraryTypes()));
+    };
+    timer = setTimeout(step, 50);
+    return () => clearTimeout(timer);
+  }, []);
+  const allTypes = () => {
+    if (!typesCache) setTypes((typesCache = libraryTypes()));
+  };
   const setSel = (id: string) => {
     lastSel = id;
     setSelState(id);
@@ -107,6 +153,7 @@ export default function LearnTab() {
   const list = useMemo(() => {
     const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const out = LIBRARY.filter((e) => {
+      if (focus) return !!e.master;
       if (cat !== 'all' && e.cat !== cat) return false;
       if (level !== 'all' && e.level !== level) return false;
       if (comp !== 'all' && !e.types.includes(comp)) return false;
@@ -126,7 +173,7 @@ export default function LearnTab() {
       most: (a, b) => b.partCount - a.partCount || a.n - b.n,
     };
     return out.sort(by[sort]);
-  }, [q, cat, level, comp, status, sort, progress]);
+  }, [q, cat, level, comp, status, sort, progress, focus]);
 
   const e = sel === '__docs' ? null : (libraryEntry(sel) ?? LIBRARY[0]);
   const reports = e ? REPORTS[e.id] : undefined;
@@ -150,7 +197,7 @@ export default function LearnTab() {
     setBusy(false);
   };
 
-  const grouped = sort === 'number' && cat === 'all';
+  const grouped = sort === 'number' && cat === 'all' && !focus;
   const item = (x: LibraryEntry) => (
     <button key={x.id} className={`learn-item ${x.id === sel ? 'on' : ''}`} onClick={() => setSel(x.id)} data-testid={`example-${x.n}`} data-id={x.id}>
       <span className="num">{x.n}</span>
@@ -168,7 +215,18 @@ export default function LearnTab() {
         <button className={`learn-item ${sel === '__docs' ? 'on' : ''}`} onClick={() => setSel('__docs')} data-testid="docs-link" style={{ marginTop: 8 }}>
           📖 {t('Python & hardware reference')}
         </button>
-        <div className="lib-filters">
+        <label className={`focus-toggle ${focus ? 'on' : ''}`} data-testid="focus-mode">
+          <input type="checkbox" checked={focus} onChange={(ev) => setFocus(ev.target.checked)} />
+          <span>
+            🎯 <b>Focused Study Mode</b> — وضع الدراسة المركزة
+          </span>
+        </label>
+        {focus && (
+          <div className="muted small" data-testid="focus-note">
+            {lang === 'ar' ? 'تُعرض المشاريع الثلاثة فقط؛ الأمثلة الأخرى مخفية مؤقتاً ولم تُحذف.' : 'Only the three master projects are shown; the other examples are hidden for now, not deleted.'}
+          </div>
+        )}
+        {!focus && <div className="lib-filters">
           <input type="search" value={q} onChange={(ev) => setQ(ev.target.value)} placeholder={t('Search examples, parts…')} data-testid="lib-search" />
           <select value={cat} onChange={(ev) => setCat(ev.target.value as Cat | 'all')} data-testid="lib-cat" aria-label={t('Category')}>
             <option value="all">{t('All categories')}</option>
@@ -195,7 +253,7 @@ export default function LearnTab() {
               <option value="done">✔ {t('Completed')}</option>
             </select>
           </div>
-          <select value={comp} onChange={(ev) => setComp(ev.target.value)} data-testid="lib-comp" aria-label={t('Component')}>
+          <select value={comp} onChange={(ev) => setComp(ev.target.value)} onMouseDown={allTypes} onFocus={allTypes} data-testid="lib-comp" aria-label={t('Component')}>
             <option value="all">{t('Any component')}</option>
             {types
               .filter((x) => x.type !== 'rpi5')
@@ -215,7 +273,7 @@ export default function LearnTab() {
           <div className="muted small" data-testid="lib-count">
             {list.length} / {LIBRARY.length} {t('examples')} · ✔ {progress.done.length} · ★ {progress.fav.length}
           </div>
-        </div>
+        </div>}
         {!list.length && <div className="muted small">{t('No example matches these filters.')}</div>}
         {grouped
           ? CATEGORIES.map((c) => {
@@ -234,6 +292,8 @@ export default function LearnTab() {
       </aside>
       {!e ? (
         <Docs />
+      ) : e.master ? (
+        <MasterStudy key={e.id} m={e.master} onOpen={() => openEntry(e)} />
       ) : (
         <article className="page learn-detail" data-testid="lib-detail" data-id={e.id}>
           <h1>

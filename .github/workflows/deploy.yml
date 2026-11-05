@@ -68,3 +68,9 @@ jobs:
           name: layout-screenshots
           path: layout-shots
           if-no-files-found: ignore
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-pdfs
+          path: study-pdfs
+          if-no-files-found: ignore

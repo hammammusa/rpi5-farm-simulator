@@ -2178,3 +2178,162 @@ p.err {
 .mqtt-ctl.err {
   color: var(--danger);
 }
+
+/* ------------------------------------------------------------ COMPETITION MASTER study page */
+.focus-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #c8d3dc);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.focus-toggle.on {
+  background: #e7f6ec;
+  border-color: #2e9d4f;
+}
+.master-top {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(220px, 1.3fr);
+  gap: 12px;
+  align-items: start;
+  margin: 10px 0;
+}
+@media (max-width: 900px) {
+  .master-top {
+    grid-template-columns: 1fr;
+  }
+}
+.master-circuit {
+  margin: 0;
+  border: 1px solid var(--border, #c8d3dc);
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+  min-height: 120px;
+}
+.master-circuit img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.master-status .data-table td.bad,
+.master-study .bad {
+  color: #c62828;
+  font-weight: 600;
+}
+.master-study .ok {
+  color: #2e7d32;
+  font-weight: 600;
+}
+.master-loads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.master-loads .chip.on {
+  background: #e7f6ec;
+  border-color: #2e9d4f;
+}
+.master-loads .chip.alarm {
+  background: #fdecea;
+  border-color: #c62828;
+}
+.master-tabs {
+  flex-wrap: wrap;
+  margin: 12px 0 8px;
+}
+.master-seg {
+  flex-wrap: wrap;
+}
+.explain-lines {
+  font-size: 12px;
+  border: 1px solid var(--border, #c8d3dc);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.xline {
+  display: grid;
+  grid-template-columns: 34px minmax(0, max-content) 1fr;
+  gap: 8px;
+  padding: 1px 6px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+.xline:hover,
+.xline.on {
+  background: rgba(46, 157, 79, 0.08);
+}
+.xn {
+  color: #8a96a3;
+  text-align: right;
+}
+.xc {
+  white-space: pre;
+}
+.xa {
+  color: #2e6b3f;
+  font-family: system-ui, sans-serif;
+}
+.xterms {
+  grid-column: 2 / 4;
+  padding: 4px 6px 6px;
+  font-family: system-ui, sans-serif;
+  font-size: 12.5px;
+  color: #1c2630;
+  background: #f4f9f5;
+  border-radius: 4px;
+}
+.master-wires td,
+.master-compare td {
+  vertical-align: top;
+  font-size: 12px;
+}
+.master-compare pre.code-view {
+  font-size: 11px;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+.kind {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #eef2f5;
+}
+.kind-power {
+  background: #fdecea;
+  color: #b71c1c;
+}
+.kind-ground {
+  background: #e8e8e8;
+  color: #222;
+}
+.kind-data,
+.kind-bus {
+  background: #e3f0fc;
+  color: #0d47a1;
+}
+.kind-analog {
+  background: #fff7d6;
+  color: #7a5b00;
+}
+.kind-load {
+  background: #fff0e3;
+  color: #a14a00;
+}
+.master-wire-note {
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f4f9f5;
+  border: 1px solid #cfe6d6;
+  font-size: 12.5px;
+  display: grid;
+  gap: 4px;
+}

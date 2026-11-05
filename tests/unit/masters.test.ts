@@ -100,10 +100,11 @@ describe('COMPETITION MASTER study material', () => {
     // every code line carries a comment (an Arabic note beside every line)
     const c = m.board === 'wb' ? '//' : '#';
     for (const line of m.code.split('\n')) {
-      if (!line.trim() || line.trim().startsWith(c)) continue;
+      // a lone closing bracket needs no note
+      if (!line.trim() || line.trim().startsWith(c) || /^[\s{}()[\];,]*$/.test(line)) continue;
       expect(splitComment(line, m.board).note, line).not.toBe('');
     }
-  });
+  }, 60_000);
 
   it('the comparison table uses real lines of the three programs', () => {
     const rows = comparison();

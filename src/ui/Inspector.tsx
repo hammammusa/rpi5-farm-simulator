@@ -10,6 +10,7 @@ import { issueText, useT } from '../i18n';
 import { compName, pinName } from '../state/wiring';
 import { IssueCard } from './Problems';
 import { PartInspector } from './PartInspector';
+import { KIND_LABEL, masterProject, wireNote } from '../library/masters/study';
 
 function PropInput({ def, value, onChange }: { def: PropDef; value: any; onChange: (v: any, history?: boolean) => void }) {
   if (def.type === 'boolean')
@@ -92,6 +93,7 @@ export function Inspector() {
           <div>↓</div>
           <div>{compName(doc, w.to.comp)} · {pinName(doc, w.to.comp, w.to.pin)}</div>
         </div>
+        <MasterWireNote />
         <label className="field">
           <span>{t('Colour')}</span>
           <div className="swatches">
@@ -296,3 +298,29 @@ export function issueTitle(lang: 'en' | 'ar', code: string, params?: Record<stri
 }
 
 void PI5_HEADER;
+
+/** "Understand the wiring" for the COMPETITION MASTER projects: why this wire exists and what happens without it */
+function MasterWireNote() {
+  const doc = useApp((s) => s.doc);
+  const lang = useApp((s) => s.lang);
+  const selectedWire = useApp((s) => s.selectedWire);
+  const m = masterProject(doc.exampleId);
+  const w = doc.wires.find((x) => x.id === selectedWire);
+  if (!m || !w) return null;
+  const n = wireNote(doc, w, m.board);
+  const L = (b: [string, string]) => (lang === 'ar' ? b[1] : b[0]);
+  return (
+    <div className="master-wire-note" data-testid="master-wire-note" data-kind={n.kind}>
+      <div className="panel-title sub">{L(['Understand this wire', 'افهم هذا السلك'])}</div>
+      <div>
+        <b>{L(['Type', 'النوع'])}:</b> <span className={`kind kind-${n.kind}`}>{L(KIND_LABEL[n.kind])}</span>
+      </div>
+      <div>
+        <b>{L(['Why', 'لماذا'])}:</b> {L(n.why)}
+      </div>
+      <div>
+        <b>{L(['If it is disconnected', 'لو انفصل'])}:</b> {L(n.cut)}
+      </div>
+    </div>
+  );
+}
