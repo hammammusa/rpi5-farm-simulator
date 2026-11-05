@@ -6,6 +6,7 @@ import { BCM_TO_PHYS } from '../engine/pi5';
 import type { Simulator } from '../engine/simulator';
 
 export type Cat =
+  | 'masters'
   | 'gpio'
   | 'sensors'
   | 'motors'
@@ -26,6 +27,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 export type Bi = [en: string, ar: string];
 
 export const CATEGORIES: { id: Cat; en: string; ar: string; icon: string }[] = [
+  { id: 'masters', en: 'City Farming — My 3 Master Projects', ar: 'مسابقة الزراعة الذكية — مشاريعي الثلاثة الأساسية', icon: '🏆' },
   { id: 'gpio', en: 'GPIO basics', ar: 'أساسيات GPIO', icon: '💡' },
   { id: 'sensors', en: 'Sensors', ar: 'الحساسات', icon: '🌡' },
   { id: 'motors', en: 'Motors & actuators', ar: 'المحركات والمشغلات', icon: '⚙' },

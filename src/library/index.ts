@@ -24,6 +24,8 @@ import { CHALLENGE_EXAMPLES } from './challenges';
 import { ADVANCED_EXAMPLES } from './advanced';
 import { MCU_SPECS, type McuSpec } from './controllers';
 import { currentSim } from '../catalog/examples';
+import { MASTER_PROJECTS, type MasterProject } from './masters/study';
+import { masterInAppScenarios } from './masters/inapp';
 
 export interface LibraryEntry {
   id: string;
@@ -45,6 +47,8 @@ export interface LibraryEntry {
   legacy?: Example;
   /** ESP32 / Wiren Board project */
   mcu?: McuSpec;
+  /** one of the three COMPETITION MASTER study projects */
+  master?: MasterProject;
   build(): ProjectDoc;
   scenarios(): Scenario[];
 }
@@ -165,6 +169,45 @@ function fromMcu(e: McuSpec): LibraryEntry {
   };
 }
 
+function fromMaster(m: MasterProject): LibraryEntry {
+  let types: string[] | null = null;
+  let count = 0;
+  const parts = () => {
+    if (!types) {
+      const d = m.build();
+      types = [...new Set(d.components.map((c) => c.type))];
+      count = d.components.length;
+    }
+  };
+  return {
+    id: m.id,
+    n: 0,
+    cat: 'masters',
+    level: 'advanced',
+    minutes: 120,
+    title: m.title,
+    goal: m.goal,
+    result: [
+      'AUTO, DOSING and TEST modes, five alarms and a status display, checked by 10 scenarios that run the real program.',
+      'أوضاع AUTO وDOSING وTEST وخمسة إنذارات ولوحة حالة، تتحقق منها 10 سيناريوهات تشغّل البرنامج الحقيقي.',
+    ],
+    steps: [STEP.open, STEP.run],
+    explain: m.summary,
+    get types() {
+      parts();
+      return types!;
+    },
+    get partCount() {
+      parts();
+      return count;
+    },
+    code: m.code,
+    master: m,
+    build: () => m.build(),
+    scenarios: () => masterInAppScenarios(m),
+  };
+}
+
 const STEP_MCU: Bi = [
   'Open the example: the circuit is wired and each controller has its program in its own folder (choose the controller in the Code bar).',
   'افتح المثال: الدائرة موصولة ولكل متحكم برنامجه في مجلده الخاص (اختر المتحكم من شريط الكود).',
@@ -172,7 +215,9 @@ const STEP_MCU: Bi = [
 
 const SPECS: LibExample[] = [...GPIO_EXAMPLES, ...SENSOR_EXAMPLES, ...MOTOR_EXAMPLES, ...DISPLAY_EXAMPLES, ...COMMS_EXAMPLES, ...SMARTHOME_EXAMPLES, ...SECURITY_EXAMPLES, ...ROBOTICS_EXAMPLES, ...INDUSTRIAL_EXAMPLES, ...FARMING_EXAMPLES, ...ENERGY_EXAMPLES, ...LOGIC_EXAMPLES, ...DATA_EXAMPLES, ...CHALLENGE_EXAMPLES, ...ADVANCED_EXAMPLES];
 
-export const LIBRARY: LibraryEntry[] = [...EXAMPLES.map(fromLegacy), ...SPECS.map(fromSpec), ...MCU_SPECS.map(fromMcu)];
+// the three master projects are numbered after the 161 examples (numbers of the existing examples
+// stay the same) and shown first, in their own category
+export const LIBRARY: LibraryEntry[] = [...EXAMPLES.map(fromLegacy), ...SPECS.map(fromSpec), ...MCU_SPECS.map(fromMcu), ...MASTER_PROJECTS.map(fromMaster)];
 LIBRARY.forEach((e, i) => (e.n = i + 1));
 
 export function libraryEntry(id: string) {

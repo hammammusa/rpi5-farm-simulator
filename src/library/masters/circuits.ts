@@ -27,9 +27,33 @@ function addAlarmLamp(b: CircuitBuilder, x: number, y: number) {
   return b.add('ralarm', 'resistor', x, y + 20, { ohms: 2200 }, 0, '2.2 kΩ').add('lamp', 'led', x + 90, y, { color: 'red' }, 0, 'Alarm lamp');
 }
 
-/** a load switched by a relay contact: supply + → COM, NO → load +, load − → supply − */
-function switched(b: CircuitBuilder, ps: string, com: string, no: string, loadP: string, loadN: string, color: string) {
-  return b.wire(`${ps}.P`, com, W.red).wire(no, loadP, color).wire(loadN, `${ps}.N`, W.black);
+/**
+ * 12 V side of the relays, wired like a real panel: the supply + goes to the first COM and short
+ * jumpers link the COM terminals of the same module; every NO feeds its load; the load − terminals
+ * are chained back to the supply −. contacts: [relay COM, relay NO, load + pin, load − pin].
+ */
+function loadSide(b: CircuitBuilder, ps: string, contacts: [string, string, string, string][]) {
+  let prevCom: string | null = null;
+  for (const [com, no, p] of contacts) {
+    const mod = com.split('.')[0];
+    if (prevCom && prevCom.split('.')[0] === mod) b.wire(prevCom, com, W.red);
+    else b.wire(`${ps}.P`, com, W.red);
+    prevCom = com;
+    b.wire(no, p, W.orange);
+  }
+  // returns: load − → next load − … → supply −
+  const ns = contacts.map((c) => c[3]);
+  ns.forEach((n, i) => b.wire(n, i === ns.length - 1 ? `${ps}.N` : ns[i + 1], W.black));
+  return b;
+}
+
+/** analog sensor modules side by side: + and − daisy-chained from the first one */
+function sensorChain(b: CircuitBuilder, ids: string[], vcc: string, gnd: string) {
+  ids.forEach((id, i) => {
+    b.wire(i === 0 ? vcc : `${ids[i - 1]}.VCC`, `${id}.VCC`, W.red);
+    b.wire(`${id}.GND`, i === 0 ? gnd : `${ids[i - 1]}.GND`, W.black);
+  });
+  return b;
 }
 
 function finishDoc(b: CircuitBuilder, name: string, id: string): ProjectDoc {
@@ -56,7 +80,8 @@ export function piMasterCircuit(): ProjectDoc {
   b.add('ph', 'ph_sensor', 460, -160, { source: 'farm' }, 0, 'pH');
   b.add('ec', 'ec_sensor', 540, -160, { source: 'farm' }, 0, 'EC');
   b.add('lvl', 'water_level_analog', 620, -160, { source: 'farm' }, 0, 'Water level');
-  for (const [id, ch] of [['ph', 0], ['ec', 1], ['lvl', 2]] as const) b.wire('pi.P4', `${id}.VCC`, W.red).wire(`${id}.GND`, 'pi.P30', W.black).wire(`${id}.AO`, `adc.CH${ch}`, W.yellow, `CH${ch}`);
+  sensorChain(b, ['ph', 'ec', 'lvl'], 'pi.P4', 'pi.P30');
+  for (const [id, ch] of [['ph', 0], ['ec', 1], ['lvl', 2]] as const) b.wire(`${id}.AO`, `adc.CH${ch}`, W.yellow, `CH${ch}`);
   b.add('cur', 'acs712', 700, 40, { range: 5 }, 0, 'ACS712 pump current');
   b.wire('pi.P4', 'cur.VCC', W.red).wire('cur.GND', 'pi.P34', W.black).wire('cur.OUT', 'adc.CH3', W.yellow, 'CH3');
   // relays (active HIGH, 5 V coils)
@@ -69,17 +94,21 @@ export function piMasterCircuit(): ProjectDoc {
   // loads on the 12 V supply
   b.add('ps', 'power_supply', 460, 420, { volts: 12, amps: 10 }, 0, '12 V 10 A');
   addLoad(b, 'pump', 860, 0);
-  b.wire('ps.P', 'rl4.COM1', W.red).wire('rl4.NO1', 'cur.IPP', W.red).wire('cur.IPN', 'pump.P', W.red).wire('pump.N', 'ps.N', W.black);
   addLoad(b, 'fan', 860, 100);
-  switched(b, 'ps', 'rl4.COM2', 'rl4.NO2', 'fan.P', 'fan.N', W.red);
   addLoad(b, 'light', 860, 200);
-  switched(b, 'ps', 'rl4.COM3', 'rl4.NO3', 'light.P', 'light.N', W.red);
   addAlarmLamp(b, 700, 160);
-  b.wire('ps.P', 'rl4.COM4', W.red).wire('rl4.NO4', 'ralarm.1', W.red).wire('ralarm.2', 'lamp.A', W.red).wire('lamp.K', 'ps.N', W.black);
   addLoad(b, 'doseA', 700, 280);
-  switched(b, 'ps', 'rl2.COM1', 'rl2.NO1', 'doseA.P', 'doseA.N', W.red);
   addLoad(b, 'doseB', 800, 280);
-  switched(b, 'ps', 'rl2.COM2', 'rl2.NO2', 'doseB.P', 'doseB.N', W.red);
+  b.wire('cur.IPN', 'pump.P', W.orange);
+  b.wire('ralarm.2', 'lamp.A', W.orange);
+  loadSide(b, 'ps', [
+    ['rl4.COM1', 'rl4.NO1', 'cur.IPP', 'pump.N'],
+    ['rl4.COM2', 'rl4.NO2', 'fan.P', 'fan.N'],
+    ['rl4.COM3', 'rl4.NO3', 'light.P', 'light.N'],
+    ['rl4.COM4', 'rl4.NO4', 'ralarm.1', 'lamp.K'],
+    ['rl2.COM1', 'rl2.NO1', 'doseA.P', 'doseA.N'],
+    ['rl2.COM2', 'rl2.NO2', 'doseB.P', 'doseB.N'],
+  ]);
   // mode buttons to GND (internal pull-ups)
   b.add('btnDose', 'button', 260, 440, {}, 0, 'DOSING button');
   b.wire('pi.P37', 'btnDose.1a', W.green, 'GPIO26').wire('btnDose.2a', 'pi.P39', W.black);
@@ -103,7 +132,7 @@ export function piMasterCircuit(): ProjectDoc {
 export function espMasterCircuit(): ProjectDoc {
   const b = new CircuitBuilder().add('esp', 'esp32_devkitc', 40, 60, {}, 0, 'ESP32');
   b.add('ps5', 'power_supply', 40, 420, { volts: 5, amps: 3 }, 0, '5 V 3 A');
-  b.wire('ps5.N', 'esp.GND1', W.black, 'common GND');
+  b.wire('ps5.N', 'esp.GND1', W.black);
   // sensors
   b.add('dht', 'dht22', 260, -160, { source: 'farm' }, 0, 'DHT22');
   b.wire('esp.3V3', 'dht.VCC', W.red, '3V3').wire('dht.DATA', 'esp.IO4', W.yellow, 'GPIO4').wire('dht.GND', 'esp.GND3', W.black);
@@ -112,7 +141,8 @@ export function espMasterCircuit(): ProjectDoc {
   b.add('ph', 'ph_sensor', 460, -160, { source: 'farm' }, 0, 'pH');
   b.add('ec', 'ec_sensor', 540, -160, { source: 'farm' }, 0, 'EC');
   b.add('lvl', 'water_level_analog', 620, -160, { source: 'farm' }, 0, 'Water level');
-  for (const [id, pin] of [['ph', 'VP'], ['ec', 'VN'], ['lvl', 'IO34']] as const) b.wire('ps5.P', `${id}.VCC`, W.red).wire(`${id}.GND`, 'ps5.N', W.black).wire(`${id}.AO`, `esp.${pin}`, W.yellow, pin === 'VP' ? 'GPIO36' : pin === 'VN' ? 'GPIO39' : 'GPIO34');
+  sensorChain(b, ['ph', 'ec', 'lvl'], 'ps5.P', 'ps5.N');
+  for (const [id, pin] of [['ph', 'VP'], ['ec', 'VN'], ['lvl', 'IO34']] as const) b.wire(`${id}.AO`, `esp.${pin}`, W.yellow, pin === 'VP' ? 'GPIO36' : pin === 'VN' ? 'GPIO39' : 'GPIO34');
   b.add('cur', 'acs712', 700, 40, { range: 5 }, 0, 'ACS712 pump current');
   b.wire('ps5.P', 'cur.VCC', W.red).wire('cur.GND', 'ps5.N', W.black).wire('cur.OUT', 'esp.IO35', W.yellow, 'GPIO35');
   // Nextion screen on UART1
@@ -128,17 +158,21 @@ export function espMasterCircuit(): ProjectDoc {
   // loads on the 12 V supply
   b.add('ps', 'power_supply', 460, 420, { volts: 12, amps: 10 }, 0, '12 V 10 A');
   addLoad(b, 'pump', 860, 0);
-  b.wire('ps.P', 'rl4.COM1', W.red).wire('rl4.NO1', 'cur.IPP', W.red).wire('cur.IPN', 'pump.P', W.red).wire('pump.N', 'ps.N', W.black);
   addLoad(b, 'fan', 860, 100);
-  switched(b, 'ps', 'rl4.COM2', 'rl4.NO2', 'fan.P', 'fan.N', W.red);
   addLoad(b, 'light', 860, 200);
-  switched(b, 'ps', 'rl4.COM3', 'rl4.NO3', 'light.P', 'light.N', W.red);
   addAlarmLamp(b, 700, 160);
-  b.wire('ps.P', 'rl4.COM4', W.red).wire('rl4.NO4', 'ralarm.1', W.red).wire('ralarm.2', 'lamp.A', W.red).wire('lamp.K', 'ps.N', W.black);
   addLoad(b, 'doseA', 700, 280);
-  switched(b, 'ps', 'rl2.COM1', 'rl2.NO1', 'doseA.P', 'doseA.N', W.red);
   addLoad(b, 'doseB', 800, 280);
-  switched(b, 'ps', 'rl2.COM2', 'rl2.NO2', 'doseB.P', 'doseB.N', W.red);
+  b.wire('cur.IPN', 'pump.P', W.orange);
+  b.wire('ralarm.2', 'lamp.A', W.orange);
+  loadSide(b, 'ps', [
+    ['rl4.COM1', 'rl4.NO1', 'cur.IPP', 'pump.N'],
+    ['rl4.COM2', 'rl4.NO2', 'fan.P', 'fan.N'],
+    ['rl4.COM3', 'rl4.NO3', 'light.P', 'light.N'],
+    ['rl4.COM4', 'rl4.NO4', 'ralarm.1', 'lamp.K'],
+    ['rl2.COM1', 'rl2.NO1', 'doseA.P', 'doseA.N'],
+    ['rl2.COM2', 'rl2.NO2', 'doseB.P', 'doseB.N'],
+  ]);
   // mode buttons to GND (Pin.PULL_UP)
   b.add('btnDose', 'button', 260, 340, {}, 0, 'DOSING button');
   b.wire('esp.IO23', 'btnDose.1a', W.green, 'GPIO23').wire('btnDose.2a', 'esp.GND2', W.black);
@@ -165,7 +199,7 @@ export function wbMasterCircuit(): ProjectDoc {
   b.add('ps', 'power_supply', 40, 420, { volts: 12, amps: 10 }, 0, '12 V 10 A');
   b.wire('ps.P', 'wb.VIN1', W.red).wire('ps.N', 'wb.GND1', W.black);
   b.add('ps5', 'power_supply', 200, 420, { volts: 5, amps: 1 }, 0, '5 V 1 A');
-  b.wire('ps5.N', 'wb.GND2', W.black, 'common GND');
+  b.wire('ps5.N', 'wb.GND2', W.black);
   // RS-485 bus
   b.add('air', 'rs485_climate', 300, -120, { source: 'farm', slave: 2 }, 0, 'Air sensor RS-485 (addr 2)');
   b.wire('ps.P', 'air.VCC', W.red).wire('air.GND', 'ps.N', W.black).wire('wb.RS1_A', 'air.A', W.yellow, 'RS-485 A').wire('wb.RS1_B', 'air.B', W.blue, 'RS-485 B');
@@ -175,22 +209,27 @@ export function wbMasterCircuit(): ProjectDoc {
   b.add('ph', 'ph_sensor', 300, 260, { source: 'farm' }, 0, 'pH');
   b.add('ec', 'ec_sensor', 380, 260, { source: 'farm' }, 0, 'EC');
   b.add('lvl', 'water_level_analog', 460, 260, { source: 'farm' }, 0, 'Water level');
-  for (const [id, a] of [['ph', 'A1'], ['ec', 'A2'], ['lvl', 'A3']] as const) b.wire('ps5.P', `${id}.VCC`, W.red).wire(`${id}.GND`, 'ps5.N', W.black).wire(`${id}.AO`, `wb.${a}`, W.yellow, a);
+  sensorChain(b, ['ph', 'ec', 'lvl'], 'ps5.P', 'ps5.N');
+  for (const [id, a] of [['ph', 'A1'], ['ec', 'A2'], ['lvl', 'A3']] as const) b.wire(`${id}.AO`, `wb.${a}`, W.yellow, a);
   b.add('cur', 'acs712', 700, 40, { range: 5 }, 0, 'ACS712 pump current');
   b.wire('ps5.P', 'cur.VCC', W.red).wire('cur.GND', 'ps5.N', W.black).wire('cur.OUT', 'wb.A4', W.yellow, 'A4');
   // loads on the relay module contacts
   addLoad(b, 'pump', 860, 0);
-  b.wire('ps.P', 'mr.COM1', W.red).wire('mr.NO1', 'cur.IPP', W.red).wire('cur.IPN', 'pump.P', W.red).wire('pump.N', 'ps.N', W.black);
   addLoad(b, 'doseA', 700, 280);
-  switched(b, 'ps', 'mr.COM2', 'mr.NO2', 'doseA.P', 'doseA.N', W.red);
   addLoad(b, 'doseB', 800, 280);
-  switched(b, 'ps', 'mr.COM3', 'mr.NO3', 'doseB.P', 'doseB.N', W.red);
   addLoad(b, 'fan', 860, 100);
-  switched(b, 'ps', 'mr.COM4', 'mr.NO4', 'fan.P', 'fan.N', W.red);
   addLoad(b, 'light', 860, 200);
-  switched(b, 'ps', 'mr.COM5', 'mr.NO5', 'light.P', 'light.N', W.red);
   addAlarmLamp(b, 700, 160);
-  b.wire('ps.P', 'mr.COM6', W.red).wire('mr.NO6', 'ralarm.1', W.red).wire('ralarm.2', 'lamp.A', W.red).wire('lamp.K', 'ps.N', W.black);
+  b.wire('cur.IPN', 'pump.P', W.orange);
+  b.wire('ralarm.2', 'lamp.A', W.orange);
+  loadSide(b, 'ps', [
+    ['mr.COM1', 'mr.NO1', 'cur.IPP', 'pump.N'],
+    ['mr.COM2', 'mr.NO2', 'doseA.P', 'doseA.N'],
+    ['mr.COM3', 'mr.NO3', 'doseB.P', 'doseB.N'],
+    ['mr.COM4', 'mr.NO4', 'fan.P', 'fan.N'],
+    ['mr.COM5', 'mr.NO5', 'light.P', 'light.N'],
+    ['mr.COM6', 'mr.NO6', 'ralarm.1', 'lamp.K'],
+  ]);
 
   const d = finishDoc(b, 'COMPETITION MASTER 03 — Wiren Board 7.4 Smart Farm (wb-rules)', 'master-wb7');
   d.files = [
