@@ -2,7 +2,7 @@
 // project, the one-sheet review per controller and the comparison of the three controllers.
 // Everything is generated from the real project (circuit image, wiring table, parts list, code)
 // and from the study material; test results are the ones the student ran in the browser.
-import type { Lang } from '../i18n';
+import { translate, type Lang } from '../i18n';
 import type { Bi } from '../library/dsl';
 import type { ScenarioReport } from '../tests/host';
 import { masterScenarios } from '../library/masters/scenarios';
@@ -21,7 +21,8 @@ export function downloadPdf(pdf: Uint8Array, name: string) {
 const thresholds = (code: string, comment: string) =>
   code
     .split('\n')
-    .filter((l) => /^(var )?[A-Z_]{3,} = /.test(l))
+    // the numeric settings only (thresholds, durations, hours), not the pin / control names
+    .filter((l) => /^(var )?[A-Z_]{3,} = [\d.[\], -]+;?\s*(#|\/\/|$)/.test(l))
     .map((l) => {
       const i = l.indexOf(comment);
       const kv = (i >= 0 ? l.slice(0, i) : l).replace(/^var /, '').replace(/;\s*$/, '').trim();
@@ -83,7 +84,7 @@ export async function masterStudyPdf(m: MasterProject, lang: Lang, results: Scen
       w.newPage('landscape');
       w.heading(T('3. Parts list', '3. قائمة القطع'));
       w.table(
-        BOM_COLUMNS.map(([, h], i) => ({ title: h, w: [0.35, 2, 2, 0.4, 2.6, 1.6, 1.1, 1, 2.6][i] ?? 1 })),
+        BOM_COLUMNS.map(([, h], i) => ({ title: translate(lang, h), w: [0.35, 2, 2, 0.4, 2.6, 1.6, 1.1, 1, 2.6][i] ?? 1 })),
         report.bom.map((b) => BOM_COLUMNS.map(([k]) => String(b[k] ?? ''))),
         { size: 7, zebra: true },
       );

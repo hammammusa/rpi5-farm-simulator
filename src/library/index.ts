@@ -58,6 +58,9 @@ const LEVEL: Record<Example['level'], Level> = { beginner: 'beginner', intermedi
 
 const bi = (b: { en: string; ar: string }): Bi => [b.en, b.ar];
 
+/** parts of a legacy example without arranging it (the layout does not change the parts) */
+const rawParts = (ex: Example) => ((ex as Example & { rawBuild?: () => ProjectDoc }).rawBuild ?? ex.build)().components;
+
 function fromLegacy(ex: Example): LibraryEntry {
   let types: string[] | null = null;
   return {
@@ -72,11 +75,11 @@ function fromLegacy(ex: Example): LibraryEntry {
     steps: [bi(ex.instructions), ...ex.breakIt.map(bi)],
     explain: bi(ex.objective),
     get types() {
-      types ??= [...new Set(ex.build().components.map((c) => c.type))];
+      types ??= [...new Set(rawParts(ex).map((c) => c.type))];
       return types;
     },
     get partCount() {
-      return ex.build().components.length;
+      return rawParts(ex).length;
     },
     get code() {
       const d = ex.build();
@@ -156,11 +159,12 @@ function fromMcu(e: McuSpec): LibraryEntry {
     result: e.result,
     steps: [STEP_MCU, STEP.run, e.tryIt, e.modify],
     explain: e.explain,
+    // parts and counts come from the circuit itself, no need to arrange it
     get types() {
-      return [...new Set(d().components.map((c) => c.type))];
+      return [...new Set(e.build().components.map((c) => c.type))];
     },
     get partCount() {
-      return d().components.length;
+      return e.build().components.length;
     },
     code: e.code,
     mcu: e,

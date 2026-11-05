@@ -16,6 +16,8 @@ for (const ex of EXAMPLES) {
     cached ??= arrangeCircuit(original.call(this));
     return structuredClone(cached);
   };
+  // the circuit before arranging: same parts and wires, for listings that need no layout
+  (ex as Example & { rawBuild?: () => ProjectDoc }).rawBuild = () => original.call(ex);
 }
 
 export function exampleById(id: string) {

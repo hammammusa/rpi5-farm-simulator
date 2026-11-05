@@ -61,13 +61,17 @@ for (const P of PROJECTS) {
     expect(await page.locator('[data-check="PASS"]').count()).toBe(10);
     // study PDFs (with these results), the cheat sheet and the comparison
     await page.getByTestId('mtab-export').click();
-    for (const what of ['study', 'cheat', ...(P.id === 'master-pi5' ? ['compare'] : [])]) {
-      const dl = page.waitForEvent('download', { timeout: 120_000 });
-      await page.getByTestId(`pdf-${what}`).click();
-      const d = await dl;
-      await d.saveAs(`${OUT}/${d.suggestedFilename()}`);
-      expect(d.suggestedFilename()).toMatch(/\.pdf$/);
+    for (const lang of ['en', 'ar']) {
+      await page.evaluate((l) => (window as any).__rpi5sim.useApp.getState().setLang(l), lang);
+      for (const what of ['study', 'cheat', ...(P.id === 'master-pi5' ? ['compare'] : [])]) {
+        const dl = page.waitForEvent('download', { timeout: 120_000 });
+        await page.getByTestId(`pdf-${what}`).click();
+        const d = await dl;
+        await d.saveAs(`${OUT}/${d.suggestedFilename()}`);
+        expect(d.suggestedFilename()).toMatch(new RegExp(`-${lang}\\.pdf$`));
+      }
     }
+    await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().setLang('en'));
   });
 
   test(`${P.id}: opens wired and arranged, runs, shows the status and explains a wire`, async ({ page }) => {

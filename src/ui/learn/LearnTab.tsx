@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Example } from '../../examples';
 import { uid } from '../../engine/project';
 import { getPart, hasPart } from '../../engine/parts';
@@ -42,7 +42,6 @@ const toggle = (list: string[], id: string, on: boolean) => (on ? [...new Set([.
 let progressCache: Progress | null = null;
 const REPORTS: Record<string, ScenarioReport[]> = {};
 let lastSel: string | null = null;
-let typesCache: ReturnType<typeof libraryTypes> | null = null;
 
 // Focused Study Mode: only the three COMPETITION MASTER projects are listed (nothing is deleted)
 const FOCUS_KEY = 'rpi5sim.focusStudy';
@@ -93,10 +92,7 @@ function suggestions(e: LibraryEntry, p: Progress): LibraryEntry[] {
   const sameCat = LIBRARY.filter((x) => fresh(x) && x.cat === e.cat && LEVEL_RANK[x.level] >= rank).sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level] || a.n - b.n);
   const mine = new Set(e.types.filter((t) => t !== 'rpi5' && t !== 'resistor'));
   const shared = (x: LibraryEntry) => x.types.filter((t) => mine.has(t)).length;
-  // building a legacy / controller project to know its parts takes time: until the background
-  // pass of the component filter has run, related projects come from the cheap entries only
-  const known = (x: LibraryEntry) => !!typesCache || !!x.spec || !!x.master;
-  const related = LIBRARY.filter((x) => fresh(x) && known(x) && x.cat !== e.cat && shared(x) > 0 && LEVEL_RANK[x.level] - rank >= 0 && LEVEL_RANK[x.level] - rank <= 1).sort((a, b) => shared(b) - shared(a) || a.n - b.n);
+  const related = LIBRARY.filter((x) => fresh(x) && x.cat !== e.cat && shared(x) > 0 && LEVEL_RANK[x.level] - rank >= 0 && LEVEL_RANK[x.level] - rank <= 1).sort((a, b) => shared(b) - shared(a) || a.n - b.n);
   return [...sameCat.slice(0, 2), ...related.slice(0, 2)].slice(0, 4);
 }
 
@@ -121,25 +117,8 @@ export default function LearnTab() {
     if (on && !libraryEntry(sel)?.master) setSel(LIBRARY.find((x) => x.master)!.id);
   };
   const L = (b: Bi) => (lang === 'ar' ? b[1] : b[0]);
-  // the component filter needs the parts of all 164 projects; building them takes seconds, so it
-  // is computed one project per tick after the first paint (or at once when the list is opened)
-  const [types, setTypes] = useState<ReturnType<typeof libraryTypes>>(() => typesCache ?? []);
-  useEffect(() => {
-    if (typesCache) return;
-    let i = 0;
-    let timer: ReturnType<typeof setTimeout>;
-    const step = () => {
-      if (typesCache) return setTypes(typesCache);
-      void LIBRARY[i++]?.types;
-      if (i < LIBRARY.length) timer = setTimeout(step, 0);
-      else setTypes((typesCache = libraryTypes()));
-    };
-    timer = setTimeout(step, 50);
-    return () => clearTimeout(timer);
-  }, []);
-  const allTypes = () => {
-    if (!typesCache) setTypes((typesCache = libraryTypes()));
-  };
+  const types = useMemo(() => libraryTypes(), []);
+
   const setSel = (id: string) => {
     lastSel = id;
     setSelState(id);
@@ -253,7 +232,7 @@ export default function LearnTab() {
               <option value="done">✔ {t('Completed')}</option>
             </select>
           </div>
-          <select value={comp} onChange={(ev) => setComp(ev.target.value)} onMouseDown={allTypes} onFocus={allTypes} data-testid="lib-comp" aria-label={t('Component')}>
+          <select value={comp} onChange={(ev) => setComp(ev.target.value)} data-testid="lib-comp" aria-label={t('Component')}>
             <option value="all">{t('Any component')}</option>
             {types
               .filter((x) => x.type !== 'rpi5')
