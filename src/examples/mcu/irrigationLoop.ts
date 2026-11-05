@@ -1,6 +1,6 @@
 // The ESP32 → MQTT → Wiren Board 7 → Modbus relay → pump → Smart Farm irrigation loop:
 // circuit, ESP32 MicroPython program and wb-rules script (used by the example library and tests).
-import { CircuitBuilder } from '../../engine/project';
+import { CircuitBuilder, WIRE_COLORS as W } from '../../engine/project';
 
 export const INTEGRATION_ESP = `import network, time
 from machine import Pin, ADC
@@ -50,16 +50,16 @@ defineRule("irrigation", {
 export function integrationCircuit() {
   const d = new CircuitBuilder()
     .add('wb', 'wb74', 400, 0)
-    .add('ps', 'power_supply', 700, 0, { volts: 12, amps: 10 })
-    .wire('ps.P', 'wb.VIN1')
-    .wire('ps.N', 'wb.GND1')
+    .add('ps', 'power_supply', 700, 0, { volts: 12, amps: 10 }, 0, '12 V')
+    .wire('ps.P', 'wb.VIN1', W.red)
+    .wire('ps.N', 'wb.GND1', W.black)
     .add('mr', 'wb_mr6c', 700, 200, { slave: 32 })
-    .wire('mr.VIN', 'ps.P').wire('mr.GND', 'ps.N').wire('mr.A', 'wb.RS1_A').wire('mr.B', 'wb.RS1_B')
-    .add('pump', 'water_pump', 900, 200, { role: 'circulation', rate: 4 })
-    .wire('ps.P', 'mr.COM1').wire('mr.NO1', 'pump.P').wire('pump.N', 'ps.N')
-    .add('esp', 'esp32_devkitc', 0, 0)
-    .add('soil', 'soil_moisture', 200, 250, { source: 'farm' })
-    .wire('soil.VCC', 'esp.3V3').wire('soil.GND', 'esp.GND1').wire('soil.AO', 'esp.IO34')
+    .wire('mr.VIN', 'ps.P', W.red).wire('mr.GND', 'ps.N', W.black).wire('mr.A', 'wb.RS1_A', W.yellow).wire('mr.B', 'wb.RS1_B', W.blue)
+    .add('pump', 'water_pump', 900, 200, { role: 'circulation', rate: 4 }, 0, 'Pump')
+    .wire('ps.P', 'mr.COM1', W.red).wire('mr.NO1', 'pump.P', W.orange).wire('pump.N', 'ps.N', W.black)
+    .add('esp', 'esp32_devkitc', 0, 0, {}, 0, 'ESP32')
+    .add('soil', 'soil_moisture', 200, 250, { source: 'farm' }, 0, 'Soil sensor')
+    .wire('soil.VCC', 'esp.3V3', W.red).wire('soil.GND', 'esp.GND1', W.black).wire('soil.AO', 'esp.IO34', W.green)
     .doc();
   d.farm = { ...d.farm, enabled: true };
   d.files.push({ name: 'esp/main.py', content: INTEGRATION_ESP }, { name: 'wb/rules.js', content: INTEGRATION_RULES });

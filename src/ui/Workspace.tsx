@@ -1,6 +1,7 @@
 import { Component, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GRID, boundsOf, pinWorld, snap } from '../engine/geometry';
 import { getPart, hasPart, pinsOf, withDefaults } from '../engine/parts';
+import { labelRect } from '../engine/layout';
 import { PI5_HEADER } from '../engine/pi5';
 import type { ComponentInstance, PinRef, ViewSettings, Wire, WireRoute, Zone } from '../engine/types';
 import { WIRE_COLORS, WIRE_WIDTHS } from '../engine/project';
@@ -106,6 +107,12 @@ export function circuitBounds(comps: ComponentInstance[], paths: WirePathInfo[] 
     y0 = Math.min(y0, b.y0 - 20);
     x1 = Math.max(x1, b.x1);
     y1 = Math.max(y1, b.y1);
+    // a name drawn beside the body (Wiren Board) is part of what has to fit
+    if (getPart(c.type).labelAt) {
+      const l = labelRect(c, b);
+      x0 = Math.min(x0, l.x0);
+      x1 = Math.max(x1, l.x1);
+    }
   }
   for (const p of paths)
     for (const q of p.pts) {
@@ -1076,7 +1083,13 @@ export const CompNode = memo(function CompNode({
       })}
       {c.type === 'rpi5' && vs.showGpioNumbers && <PiPinNumbers />}
       {label && (
-        <text x={m.w / 2} y={-12} textAnchor="middle" className={`comp-label ${c.label ? '' : 'auto'}`} transform={`rotate(${-c.rotation} ${m.w / 2} -12)`}>
+        <text
+          x={m.labelAt?.x ?? m.w / 2}
+          y={m.labelAt?.y ?? -12}
+          textAnchor={m.labelAt?.anchor ?? 'middle'}
+          className={`comp-label ${c.label ? '' : 'auto'}`}
+          transform={`rotate(${-c.rotation} ${m.labelAt?.x ?? m.w / 2} ${m.labelAt?.y ?? -12})`}
+        >
           {label}
         </text>
       )}

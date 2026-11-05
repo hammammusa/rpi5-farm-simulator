@@ -150,7 +150,8 @@ export function pinPosition(doc: ProjectDoc, r: PinRef): Pt | null {
 
 export function compBounds(c: ComponentInstance): Rect {
   const m = getPart(c.type);
-  return boundsOf(c, m.w, m.h);
+  const s = m.size?.(withDefaults(m, c.props));
+  return s ? boundsOf(c, s.w, s.h, m.w, m.h) : boundsOf(c, m.w, m.h);
 }
 
 export function viewOf(doc: ProjectDoc): ViewSettings {

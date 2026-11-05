@@ -47,6 +47,8 @@ export const wb74: PartManifest = {
   w: WB74_W,
   h: WB74_H,
   pins,
+  // terminals run along the top and bottom edges: the name goes beside the housing
+  labelAt: { x: -10, y: WB74_H / 2 + 4, anchor: 'end' },
   internal: () => [
     ['VIN1', 'VIN2'],
     ['GND1', 'GND2', 'GND3'],

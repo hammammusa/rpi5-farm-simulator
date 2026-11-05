@@ -2,6 +2,7 @@
 // Every entry opens as a complete, arranged project and has an automatic test.
 import { EXAMPLES, type Example } from '../examples';
 import type { ProjectDoc } from '../engine/types';
+import { arrangeCircuit } from '../engine/layout';
 import { getPart, hasPart } from '../engine/parts';
 import type { Scenario } from '../tests/host';
 import { buildLibDoc, libScenario } from './build';
@@ -137,7 +138,9 @@ function mcuScenario(e: McuSpec): Scenario {
 
 function fromMcu(e: McuSpec): LibraryEntry {
   let doc: ProjectDoc | null = null;
-  const d = () => (doc ??= e.build());
+  // opens with its default layout: Auto Arrange (sections per controller, routed wires; the
+  // example's own wire colours are kept). Only geometry changes; pins, props and code do not.
+  const d = () => (doc ??= arrangeCircuit(e.build()));
   return {
     id: e.id,
     n: 0,

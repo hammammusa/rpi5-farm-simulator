@@ -261,6 +261,8 @@ export const relayModule: PartManifest = {
     'Opto-isolated relay board (1/2/4 channels). VCC/GND power the coils, INx are the logic inputs. Most boards are active-LOW: IN pulled LOW energises the relay. COM↔NO closes when energised, COM↔NC is closed when idle.',
   w: 120,
   h: 50,
+  // the board grows with its channels (as drawn): 40 units per relay
+  size: (p) => ({ w: 120, h: Math.max(50, (Number(p.channels) || 1) * 40) }),
   pins: relayPins,
   props: [
     { key: 'channels', label: 'Channels', type: 'select', default: 1, options: [1, 2, 4].map((v) => ({ value: v, label: `${v}` })), group: 'config' },

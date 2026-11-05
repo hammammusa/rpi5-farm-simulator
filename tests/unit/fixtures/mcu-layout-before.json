@@ -1,0 +1,222 @@
+{
+ "mcu-esp32-blink": {
+  "opened": {
+   "crossings": 1,
+   "overBodies": 1,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 440,
+   "w": 340,
+   "h": 250
+  },
+  "arranged": {
+   "crossings": 1,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 8,
+   "length": 820,
+   "w": 480,
+   "h": 250
+  }
+ },
+ "mcu-esp32-dht-fan": {
+  "opened": {
+   "crossings": 9,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 3120,
+   "w": 710,
+   "h": 330
+  },
+  "arranged": {
+   "crossings": 5,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 30,
+   "length": 6090,
+   "w": 820,
+   "h": 250
+  }
+ },
+ "mcu-esp32-soil-pump": {
+  "opened": {
+   "crossings": 9,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 3160,
+   "w": 720,
+   "h": 330
+  },
+  "arranged": {
+   "crossings": 4,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 38,
+   "length": 6420,
+   "w": 830,
+   "h": 250
+  }
+ },
+ "mcu-esp32-grow-light": {
+  "opened": {
+   "crossings": 6,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 1470,
+   "w": 340,
+   "h": 250
+  },
+  "arranged": {
+   "crossings": 3,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 18,
+   "length": 2710,
+   "w": 490,
+   "h": 250
+  }
+ },
+ "mcu-esp32-greenhouse": {
+  "opened": {
+   "crossings": 62,
+   "overBodies": 4,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 9110,
+   "w": 720,
+   "h": 460
+  },
+  "arranged": {
+   "crossings": 44,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 99,
+   "length": 29930,
+   "w": 2170,
+   "h": 250
+  }
+ },
+ "mcu-wb7-input-relay": {
+  "opened": {
+   "crossings": 4,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 1962,
+   "w": 400,
+   "h": 270
+  },
+  "arranged": {
+   "crossings": 3,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 21,
+   "length": 3326,
+   "w": 610,
+   "h": 250
+  }
+ },
+ "mcu-wb7-level-irrigation": {
+  "opened": {
+   "crossings": 11,
+   "overBodies": 5,
+   "overlaps": 1,
+   "bends": 0,
+   "length": 4428,
+   "w": 360,
+   "h": 400
+  },
+  "arranged": {
+   "crossings": 1,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 42,
+   "length": 7956,
+   "w": 890,
+   "h": 200
+  }
+ },
+ "mcu-wb7-1wire-heating": {
+  "opened": {
+   "crossings": 25,
+   "overBodies": 6,
+   "overlaps": 1,
+   "bends": 0,
+   "length": 5438,
+   "w": 360,
+   "h": 420
+  },
+  "arranged": {
+   "crossings": 12,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 63,
+   "length": 10434,
+   "w": 890,
+   "h": 330
+  }
+ },
+ "mcu-wb7-modbus-output": {
+  "opened": {
+   "crossings": 24,
+   "overBodies": 5,
+   "overlaps": 1,
+   "bends": 0,
+   "length": 5712,
+   "w": 360,
+   "h": 400
+  },
+  "arranged": {
+   "crossings": 7,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 48,
+   "length": 9156,
+   "w": 920,
+   "h": 200
+  }
+ },
+ "mcu-wb7-mqtt-alarms": {
+  "opened": {
+   "crossings": 31,
+   "overBodies": 3,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 5026,
+   "w": 460,
+   "h": 420
+  },
+  "arranged": {
+   "crossings": 10,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 49,
+   "length": 9266,
+   "w": 830,
+   "h": 410
+  }
+ },
+ "mcu-esp32-wb7-integration": {
+  "opened": {
+   "crossings": 10,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 0,
+   "length": 4248,
+   "w": 980,
+   "h": 330
+  },
+  "arranged": {
+   "crossings": 9,
+   "overBodies": 0,
+   "overlaps": 0,
+   "bends": 44,
+   "length": 7700,
+   "w": 720,
+   "h": 490
+  }
+ }
+}

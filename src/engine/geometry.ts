@@ -32,8 +32,9 @@ export function pinWorld(c: ComponentInstance, p: PinDef, w: number, h: number) 
   return { x: c.x + r.x, y: c.y + r.y };
 }
 
-export function boundsOf(c: ComponentInstance, w: number, h: number) {
-  const pv = pivotOf(w, h);
+/** body rectangle; (pw, ph) is the manifest size that fixes the rotation pivot when the drawn size differs */
+export function boundsOf(c: ComponentInstance, w: number, h: number, pw = w, ph = h) {
+  const pv = pivotOf(pw, ph);
   const corners = [
     rotatePoint(0, 0, c.rotation, pv.x, pv.y),
     rotatePoint(w, 0, c.rotation, pv.x, pv.y),

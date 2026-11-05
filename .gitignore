@@ -8,3 +8,4 @@ playwright-report
 perf-results
 public/micropython
 public/clang
+layout-shots

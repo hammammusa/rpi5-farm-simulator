@@ -111,6 +111,10 @@ export interface PartManifest {
   /** part can be inserted into breadboard holes */
   insertable?: boolean;
   hidden?: boolean;
+  /** drawn size when it depends on the props (e.g. relay channels); default w × h */
+  size?: (props: Record<string, any>) => { w: number; h: number };
+  /** where the part's name is drawn (default: centred above the body); used for parts with terminals on the top edge */
+  labelAt?: { x: number; y: number; anchor: 'start' | 'middle' | 'end' };
   /** simulation fidelity; defaults are assigned in catalog/registry.ts */
   fidelity?: Fidelity;
   /** library group; defaults are derived from `category` in catalog/registry.ts */

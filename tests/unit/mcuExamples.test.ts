@@ -7,7 +7,9 @@ import { WbRulesEngine } from '../../src/runtime/wb/wbRules';
 import { McuHarness } from './mcuharness';
 
 async function runSpec(spec: McuSpec) {
-  const doc = spec.build();
+  // the project as it opens from the library (default layout applied): the programs must work
+  // exactly as on the unarranged circuit, because arranging only moves parts and wires
+  const doc = LIBRARY.find((e) => e.id === spec.id)!.build();
   const h = new McuHarness(doc);
   const out: string[] = [];
   const engines: WbRulesEngine[] = [];
