@@ -1,7 +1,7 @@
 import type { PartManifest } from './base';
 import { pi5 } from './pi5';
 import { esp32 } from './esp32';
-import { wb74, wbMr6c } from './wb74';
+import { rs485Climate, wb74, wbMr6c } from './wb74';
 import * as basic from './basic';
 import * as act from './actuators';
 import * as sen from './sensors';
@@ -19,6 +19,7 @@ export const PARTS: PartManifest[] = [
   esp32,
   wb74,
   wbMr6c,
+  rs485Climate,
   basic.breadboard,
   basic.led,
   basic.rgbLed,

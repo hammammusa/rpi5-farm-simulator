@@ -110,3 +110,32 @@ export function simpleNextion(): NextionProject {
   comp(p, 'text', 't1', 10, 196, 300, 34, { txt: 'Pump: OFF', bco: C.DARK, pco: C.YELLOW, font: 2 });
   return nx;
 }
+
+/** COMPETITION MASTER 02 (ESP32): one status page; the program writes tTemp … tDay over UART1. */
+export function masterNextionTemplate(): NextionProject {
+  const nx = emptyNextionProject();
+  const p = nx.pages[0];
+  p.name = 'main';
+  p.bco = C.DARK;
+  comp(p, 'text', 'tTitle', 0, 0, 320, 24, { txt: 'SMART FARM · ESP32', bco: C.TEAL, pco: C.WHITE, font: 1, xcen: 0 });
+  const cells: [string, string, string][] = [
+    ['lTemp', 'tTemp', 'Air °C'],
+    ['lHum', 'tHum', 'Humidity %'],
+    ['lCO2', 'tCO2', 'CO2 ppm'],
+    ['lPH', 'tPH', 'pH'],
+    ['lEC', 'tEC', 'EC mS/cm'],
+    ['lLevel', 'tLevel', 'Water %'],
+    ['lMode', 'tMode', 'Mode'],
+    ['lDay', 'tDay', 'Grow day'],
+  ];
+  cells.forEach(([l, v, txt], i) => {
+    const x = 4 + (i % 4) * 79;
+    const y = 30 + Math.floor(i / 4) * 54;
+    label(p, l, x, y, 75, txt);
+    value(p, v, x, y + 18, 75);
+  });
+  label(p, 'lAlarm', 4, 142, 312, 'Alarm');
+  comp(p, 'text', 'tAlarm', 4, 162, 312, 32, { txt: '--', bco: C.PANEL, pco: C.YELLOW, font: 2, xcen: 1 });
+  comp(p, 'text', 'tHint', 4, 204, 312, 30, { txt: 'Buttons on GPIO23 (DOSING) and GPIO32 (TEST)', bco: C.DARK, pco: C.LIGHTGRAY, font: 0, xcen: 1 });
+  return nx;
+}

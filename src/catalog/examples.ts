@@ -555,6 +555,22 @@ export const PART_EXAMPLES: Record<string, PartExample> = {
     wires: ['xcvr.VCC>pi.P1', 'xcvr.GND>pi.P6', 'xcvr.TX>pi.P10', 'xcvr.RX>pi.P8', 'xcvr.A>dut.A', 'xcvr.B>dut.B', 'dut.VCC>ps.P', 'dut.GND>ps.N', 'ps.N>pi.P39'],
     expect: /moisture 32\.0 %\s+temp 22\.0 °C\s+EC 800\s+pH 6\.5\s+NPK 40\/20\/60/,
   },
+  rs485_climate: {
+    title: 'RS-485 air sensor (temperature, humidity, CO₂) with minimalmodbus',
+    code: `import minimalmodbus
+
+sensor = minimalmodbus.Instrument("/dev/serial0", 2)   # address 2
+sensor.serial.baudrate = 9600
+temperature = sensor.read_register(0, 1, functioncode=4, signed=True)   # 1 decimal
+humidity = sensor.read_register(1, 1, functioncode=4)
+co2 = sensor.read_register(2, 0, functioncode=4)
+print(f"T {temperature} °C  H {humidity} %  CO2 {co2} ppm")
+`,
+    helpers: ['ps'],
+    parts: [['xcvr', 'max485', 560, 80, { auto: true }]],
+    wires: ['xcvr.VCC>pi.P1', 'xcvr.GND>pi.P6', 'xcvr.TX>pi.P10', 'xcvr.RX>pi.P8', 'xcvr.A>dut.A', 'xcvr.B>dut.B', 'dut.VCC>ps.P', 'dut.GND>ps.N', 'ps.N>pi.P39'],
+    expect: /T 24\.0 °C\s+H 60\.0 %\s+CO2 650 ppm/,
+  },
   wb_mr6c: {
     title: 'WB-MR6C relay K1 over Modbus RTU (raw frames through a MAX485)',
     code: `import serial

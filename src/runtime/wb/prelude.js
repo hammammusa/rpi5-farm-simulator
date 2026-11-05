@@ -6,6 +6,19 @@
 // __host_timer, __host_cancel, __host_now.
 (function (G) {
   'use strict';
+  // the controller's clock is the simulation clock (also in fast-forward): new Date() and
+  // Date.now() give simulation time; the time zone is the one of the computer running the page
+  var HostDate = G.Date;
+  class SimDate extends HostDate {
+    constructor() {
+      if (arguments.length) super(...arguments);
+      else super(__host_now());
+    }
+    static now() {
+      return __host_now();
+    }
+  }
+  G.Date = SimDate;
   var cells = {}; // "dev/ctl" -> { value, type, readonly, meta }
   var virtualDevs = {};
   var rules = [];
@@ -67,6 +80,12 @@
       if (c.type === null) throw new Error('virtual device ' + dev + ' has no control ' + ctl);
       var payload = str(v);
       var nv = typed(c.type, payload);
+      // a pushbutton is an event: every press reaches the rules, it keeps no state
+      if (c.type === 'pushbutton') {
+        __host_publish('/devices/' + dev + '/controls/' + ctl, '1', false);
+        changed(key, true);
+        return;
+      }
       __host_publish('/devices/' + dev + '/controls/' + ctl, payload, true);
       if (c.value !== nv) {
         c.value = nv;

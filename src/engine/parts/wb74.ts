@@ -5,7 +5,7 @@
 // MQTT live in engine/wb/wbSystem.ts.
 import { WB74, WB74_ADC_MAX_V, WB74_OUT_MAX_A, WB74_OUT_MAX_V, WB74_SUPPLY } from '../boards/wb74';
 import type { PinDef } from '../types';
-import { FAULT, pin, type PartManifest } from './base';
+import { FAULT, pin, sourceProp, type PartManifest } from './base';
 import { modbusCrc } from '../devices/serialDevices';
 import type { DeviceHost, DeviceModel } from '../devices/device';
 
@@ -233,5 +233,78 @@ export const wbMr6c: PartManifest = {
     }
     if (ctx.connected('VIN') && v > 1 && v < 9) ctx.issue('W_RELAY_UNDERPOWERED', 'warning', { v: v.toFixed(1), coil: 12 }, ['VIN']);
     return { powered, ch, vs: v };
+  },
+};
+
+// ---------------------------------------------------------------- RS-485 air sensor
+/**
+ * Generic RS-485 air sensor (temperature, humidity, CO₂) as sold for greenhouses, Modbus RTU
+ * 9600 8N1. Register map used by the simulator (functions 03 and 04): 0 = temperature × 10 °C
+ * (signed), 1 = relative humidity × 10 %, 2 = CO₂ ppm. Vendor maps differ — check the datasheet
+ * of a real sensor and change the template.
+ */
+export class Rs485Climate implements DeviceModel {
+  constructor(private host: DeviceHost) {}
+  uartBaud() {
+    return Number(this.host.props().baud) || 9600;
+  }
+  rs485Receive(bytes: number[], t: number, reply: (b: number[], t: number) => void) {
+    const f = this.host.fault();
+    if (f === 'disconnected' || !this.host.powered() || bytes.length < 8) return;
+    const [addr, fn, ah, al, nh, nl, c1, c2] = bytes;
+    const crc = modbusCrc(bytes.slice(0, 6));
+    if (crc[0] !== c1 || crc[1] !== c2 || addr !== (Number(this.host.props().slave) || 1)) return;
+    const s16 = (x: number) => Math.round(x) & 0xffff;
+    const regs = [s16(this.host.value('temperature') * 10), s16(this.host.value('humidity') * 10), s16(this.host.value('co2'))];
+    const start = (ah << 8) | al;
+    const count = (nh << 8) | nl;
+    let resp: number[];
+    if (fn !== 3 && fn !== 4) resp = [addr, fn | 0x80, 1];
+    else if (count < 1 || start + count > regs.length) resp = [addr, fn | 0x80, 2];
+    else {
+      resp = [addr, fn, count * 2];
+      for (let i = 0; i < count; i++) resp.push((regs[start + i] >> 8) & 0xff, regs[start + i] & 0xff);
+    }
+    resp.push(...modbusCrc(resp));
+    reply(resp, t + 0.02 + (resp.length * 10) / this.uartBaud());
+  }
+}
+
+export const rs485Climate: PartManifest = {
+  type: 'rs485_climate',
+  name: 'RS-485 air sensor (temperature, humidity, CO₂ — Modbus RTU)',
+  short: 'Air 485',
+  category: 'sensor',
+  description:
+    'Greenhouse air transmitter with an RS-485 Modbus-RTU interface: temperature, relative humidity and CO₂. 12…24 V supply. Registers (function 03/04): 0 temperature ×10 °C, 1 humidity ×10 %, 2 CO₂ ppm. Vendor register maps differ — check the datasheet of the real sensor.',
+  w: 70,
+  h: 50,
+  pins: [pin('VCC', 'V+ (brown)', 0, 10, 'power'), pin('GND', 'GND (black)', 0, 20, 'ground'), pin('A', 'A+ (yellow)', 0, 30, 'digital'), pin('B', 'B− (blue)', 0, 40, 'digital')],
+  props: [
+    sourceProp(),
+    { key: 'temperature', label: 'Temperature', type: 'number', default: 24, min: -20, max: 60, step: 0.1, unit: '°C', live: true, group: 'sensor' },
+    { key: 'humidity', label: 'Humidity', type: 'number', default: 60, min: 0, max: 100, step: 1, unit: '%', live: true, group: 'sensor' },
+    { key: 'co2', label: 'CO₂', type: 'number', default: 650, min: 300, max: 5000, step: 10, unit: 'ppm', live: true, group: 'sensor' },
+    { key: 'slave', label: 'Modbus address', type: 'number', default: 2, min: 1, max: 247, step: 1, unit: '', group: 'config' },
+    { key: 'baud', label: 'Baud rate', type: 'select', default: 9600, options: [4800, 9600, 19200].map((b) => ({ value: b, label: `${b}` })), group: 'config' },
+  ],
+  farmKeys: { temperature: 'air.temp', humidity: 'air.humidity', co2: 'air.co2' },
+  faults: [FAULT.none, FAULT.disconnected],
+  support: 'full',
+  fidelity: 'functional',
+  limits: 'Modbus RTU functions 03/04 with CRC-16 and exception codes, documented register map. The NDIR and humidity physics are not modelled; values come from the sliders or the Smart Farm air.',
+  voltage: '12…24 V DC',
+  interfaces: ['RS-485 Modbus RTU'],
+  python: 'Wiren Board: dev["air-sensor_2/Temperature"] · Raspberry Pi: minimalmodbus via MAX485 (read_register(0, 1, functioncode=4))',
+  drivers: ['wb-mqtt-serial', 'minimalmodbus'],
+  device: (h) => new Rs485Climate(h),
+  stamp(ctx) {
+    ctx.R('idd', ctx.node('VCC'), ctx.node('GND'), 2400);
+  },
+  post(ctx) {
+    const v = ctx.volt('VCC') - ctx.volt('GND');
+    const powered = v >= 10 && v <= 30;
+    if (ctx.connected('VCC') && v > 1 && v < 10) ctx.issue('W_WB_UNDERVOLTAGE', 'warning', { v: v.toFixed(1) }, ['VCC']);
+    return { powered, vs: v, temperature: ctx.value('temperature'), humidity: ctx.value('humidity'), co2: ctx.value('co2') };
   },
 };

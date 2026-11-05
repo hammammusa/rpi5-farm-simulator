@@ -48,6 +48,16 @@ export const MODBUS_TEMPLATES: Record<string, ModbusTemplate> = {
     read: { fn: 1, start: 0, count: 6 },
     points: [1, 2, 3, 4, 5, 6].map((k) => ({ ctl: `K${k}`, type: 'switch' as const, reg: k - 1, coil: true })),
   },
+  rs485_climate: {
+    id: 'air-sensor',
+    title: 'RS-485 air sensor',
+    read: { fn: 4, start: 0, count: 3 },
+    points: [
+      { ctl: 'Temperature', type: 'temperature', reg: 0, scale: 0.1, signed: true },
+      { ctl: 'Humidity', type: 'rel_humidity', reg: 1, scale: 0.1 },
+      { ctl: 'CO2', type: 'value', reg: 2 },
+    ],
+  },
   rs485_soil: {
     id: 'soil-probe',
     title: 'RS-485 soil probe',
