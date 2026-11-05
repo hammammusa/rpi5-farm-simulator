@@ -173,9 +173,19 @@ test('Auto Arrange tidies a messy circuit, keeps every connection, undoes in one
   const target = page.getByTestId('comp-siren');
   const box = (await target.boundingBox())!;
   const wiresBefore = await page.evaluate(() => (window as any).__rpi5sim.useApp.getState().doc.wires.filter((w: any) => w.from.comp === 'siren' || w.to.comp === 'siren').map((w: any) => JSON.stringify(w.points)));
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // grab the part where its body (not one of its wires ending at a pin) is under the pointer
+  const grab = await page.evaluate((b) => {
+    for (const [fx, fy] of [[0.5, 0.5], [0.5, 0.3], [0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7], [0.5, 0.15]]) {
+      const x = b.x + b.width * fx;
+      const y = b.y + b.height * fy;
+      const el = document.elementFromPoint(x, y);
+      if (el?.closest('[data-testid="comp-siren"]') && !el.closest('[data-wire]')) return { x, y };
+    }
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  }, box);
+  await page.mouse.move(grab.x, grab.y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 80, { steps: 8 });
+  await page.mouse.move(grab.x + 60, grab.y + 80, { steps: 8 });
   await page.mouse.up();
   const moved = await page.evaluate(() => {
     const S = (window as any).__rpi5sim;
